@@ -1,0 +1,575 @@
+// =========================================================
+// FULL CUPOLA FURNACE 3D SIMULATION - INTERACTIVE STEP-BY-STEP
+// Features: Centered View, State Machine, Hiding UI Button, 
+// Added Step 8 (Bottom Drop Doors Open & Ash Collection)
+// =========================================================
+
+float rotY = 0;
+float rotX = -0.1;
+
+// Step Logic Variables
+int currentStep = 0;
+float animT = 0; // Goes from 0.0 to 1.0 during an animation phase
+boolean isAnimating = false;
+
+// Description text for the HUD
+String[] stepDescriptions = {
+  "Step 0: Furnace Construction. Resting on 4 legs, base drop doors closed, sand bed laid.",
+  "Step 1: Ignite the Coke Bed from the tapping hole.",
+  "Step 2: Close the tapping hole with the Clay Plug.",
+  "Step 3: Feed alternate layers of charge (Coke, Flux, Pig Iron) via charging door.",
+  "Step 4: Air blowers active. Charge is heated, melts, and falls onto the coke bed.",
+  "Step 5: Drain off the accumulated slag through the slag hole.",
+  "Step 6: Remove the clay plug to open the passage.",
+  "Step 7: Hot molten metal is tapped and collected in the ladle.",
+  "Step 8: Bottom drop doors open. Remaining ash, coke, and sand bed drop down."
+};
+
+void setup() {
+  size(1200, 800, P3D);
+  noStroke();
+}
+
+void draw() {
+  background(15, 20, 25);
+  
+  // Lighting for better 3D depth
+  lights();
+  directionalLight(255, 240, 220, -1, 1, -1);
+  ambientLight(130, 130, 130);
+
+  // Update Animation Timer
+  if (isAnimating) {
+    animT += 0.015; // Adjust speed of animations here
+    if (animT >= 1.0) {
+      animT = 1.0;
+      isAnimating = false;
+    }
+  } else if (currentStep == 0) {
+    // Idle rotation on the first step to show off the model
+    rotY += 0.002;
+  }
+
+  // 3D Camera & Positioning
+  pushMatrix();
+  
+  // Centered & zoomed out further to fit the dropping ash at the end
+  translate(width / 2, height / 2 + 120, -320); 
+  
+  rotateX(rotX);
+  rotateY(rotY);
+
+  drawFurnaceStructure();
+  drawDynamicSequence(currentStep, animT);
+  
+  popMatrix();
+  
+  // Draw 2D HUD Overlay & Buttons
+  drawHUD();
+}
+
+// Mouse dragging handles rotation (avoids the bottom UI area)
+void mouseDragged() {
+  if (mouseY < height - 120) { 
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+// Mouse pressed handles the UI buttons
+void mousePressed() {
+  if (!isAnimating) {
+    // Check if clicked inside button boundaries
+    if (mouseX > width/2 - 100 && mouseX < width/2 + 100 && mouseY > height - 80 && mouseY < height - 30) {
+      if (currentStep < 8) {
+        currentStep++;
+        animT = 0.0;
+        isAnimating = true;
+      } else {
+        // Reset simulation
+        currentStep = 0;
+        animT = 0.0;
+        isAnimating = false;
+        rotY = 0;
+        rotX = -0.1;
+      }
+    }
+  }
+}
+
+// =========================================================
+// 1. STATIC STRUCTURES & LABELS
+// =========================================================
+void drawFurnaceStructure() {
+  pushMatrix();
+  
+  // Support Legs
+  fill(50);
+  for(int i = 0; i < 4; i++) {
+    pushMatrix();
+    rotateY(HALF_PI * i);
+    translate(50, 50, 50);
+    box(15, 100, 15);
+    popMatrix();
+  }
+
+  // Base Drop Doors (Animated during Step 8)
+  float doorAngle = 0;
+  if (currentStep == 8) doorAngle = lerp(0, -HALF_PI * 0.8, animT);
+  
+  fill(70);
+  pushMatrix();
+  translate(-90, 0, 0); // Hinge location on left
+  rotateZ(doorAngle);   // Trapdoor rotation
+  translate(90, 0, 0);  // Shift back to center
+  cylinder(90, 10, true);
+  popMatrix();
+  drawLabel("Base Drop Doors", 0, 15, 90);
+
+  // Furnace Body (Steel Shell & Brick Lining)
+  pushMatrix();
+  translate(0, -450, 0); 
+  fill(100, 110, 120); 
+  halfCylinder(90, 450, false); // Steel shell (Cutaway)
+  fill(160, 60, 40); 
+  halfCylinder(80, 450, false); // Brick lining (Cutaway)
+  popMatrix();
+
+  // Spark Arrester (Top)
+  pushMatrix();
+  translate(0, -450, 0);
+  fill(60);
+  halfCone(110, 80); 
+  popMatrix();
+  drawLabel("Spark Arrester", 0, -550, 0);
+
+  // Red Blower Motor & Pipe
+  pushMatrix();
+  translate(140, -110, 0);
+  fill(180, 30, 30); 
+  box(50, 40, 40);
+  translate(-35, 0, 0);
+  rotateZ(HALF_PI);
+  cylinder(10, 35, true); 
+  popMatrix();
+  drawLabel("Air Blower", 180, -110, 0);
+
+  // Wind Box & Tuyeres
+  pushMatrix();
+  translate(0, -120, 0); 
+  fill(180, 40, 40); 
+  halfCylinder(95, 30, false); 
+  
+  fill(200, 50, 50);
+  for(int i = 0; i <= 6; i++) {
+    pushMatrix();
+    rotateY(PI/6 * i);
+    translate(82, 15, 0);
+    rotateZ(HALF_PI);
+    cylinder(8, 25, true);
+    popMatrix();
+  }
+  popMatrix();
+  drawLabel("Wind Box & Tuyeres", 110, -150, 50);
+
+  // Perforated Grate / Sand Bed Base
+  pushMatrix();
+  translate(0, -60, 0); 
+  fill(50);
+  for(int i = -30; i <= 30; i += 10) {
+    pushMatrix(); translate(i, 0, 0); box(3, 3, 70); popMatrix();
+    pushMatrix(); translate(0, 0, i); box(70, 3, 3); popMatrix();
+  }
+  popMatrix();
+
+  // Charging Door Cutout
+  pushMatrix();
+  translate(-75, -380, 0);
+  fill(15, 20, 25);
+  box(35, 60, 40);
+  popMatrix();
+  drawLabel("Charging Door", -120, -420, 40);
+
+  // Slag Hole (Right side)
+  pushMatrix();
+  translate(75, -50, 0);
+  rotateZ(-PI/6);
+  fill(90);
+  box(40, 12, 12);
+  popMatrix();
+  drawLabel("Slag Hole", 130, -60, 20);
+
+  // Tilted Tapping Spout (Left side)
+  pushMatrix();
+  translate(-80, -2, 0); 
+  rotateZ(PI/8); 
+  fill(80);
+  box(45, 10, 18);
+  popMatrix();
+  drawLabel("Tapping Spout", -110, -25, 20);
+
+  // Collecting Crucible / Ladle
+  pushMatrix();
+  translate(-125, 60, 0);
+  fill(70);
+  cylinder(40, 45, true);
+  popMatrix();
+  drawLabel("Crucible / Ladle", -125, 120, 0);
+  
+  popMatrix();
+}
+
+// =========================================================
+// 2. DYNAMIC SEQUENCE LOGIC (STEP BY STEP)
+// =========================================================
+void drawDynamicSequence(int step, float t) {
+  pushMatrix();
+  
+  // Calculate Drop offset for Step 8
+  float dropY = 0;
+  if (step == 8) {
+    dropY = lerp(0, 250, t); // Everything left drops 250 units down
+  }
+
+  // -- Permanent Sand Bed --
+  pushMatrix();
+  translate(0, -10 + dropY, 0);
+  rotateZ(-0.15); 
+  fill(210, 180, 120); 
+  halfCylinder(78, 15, true);
+  popMatrix();
+
+  // -- STEP 1 & 8: Ignite Coke Bed & Drop Ash --
+  if (step >= 1) {
+    pushMatrix();
+    translate(0, -25 + dropY, 0);
+    
+    // Fade in during step 1
+    float scaleAmt = (step == 1) ? lerp(0, 1, t) : 1; 
+    scale(scaleAmt);
+    
+    // Glowing Coke turns to grey ash in step 8
+    if (step == 8) fill(lerpColor(color(255, 100, 0, 200), color(90, 90, 95, 200), t));
+    else fill(255, 100, 0, 200);
+    
+    halfCylinder(76, 15, true);
+    
+    // Draw raw coke/ash pieces
+    if (step == 8) fill(lerpColor(color(30), color(70), t));
+    else fill(30);
+    
+    for(int i=0; i<15; i++) {
+      pushMatrix();
+      translate(random(-40, 40) * scaleAmt, -10, random(0, 40) * scaleAmt);
+      box(8);
+      popMatrix();
+    }
+    popMatrix();
+    
+    if (step == 1) drawLabel("Igniting Coke Bed", 0, -40, 0);
+    if (step == 8) drawLabel("Dropping Ash & Sand", 0, dropY, 0);
+  }
+
+  // -- STEP 2: Clay Plug --
+  if (step >= 2 && step < 6) {
+    float moveIn = (step == 2) ? lerp(-120, -60, t) : -60;
+    pushMatrix();
+    translate(moveIn, -8, 0);
+    fill(160, 90, 50); 
+    sphere(8);
+    popMatrix();
+    if (step == 2) drawLabel("Inserting Clay Plug", moveIn, -25, 0);
+  }
+
+  // -- STEP 3: Charging (Alternate Layers) --
+  float chargeHeight = 0;
+  if (step == 3) {
+    // Raining blocks down
+    chargeHeight = lerp(0, 130, t);
+    
+    float dropSpeed = 20.0;
+    float dropBlockY = lerp(-380, -60, t); 
+    pushMatrix();
+    translate(-30, dropBlockY, 0);
+    rotateX(frameCount * 0.2); 
+    fill(210, 210, 220); box(14); // Simulate falling blocks
+    popMatrix();
+    
+    drawLabel("Feeding Coke, Flux, & Iron", 0, -250, 0);
+  } else if (step > 3 && step < 4) {
+    chargeHeight = 130;
+  } else if (step == 4) {
+    chargeHeight = lerp(130, 0, t); // Melts down during step 4
+  }
+
+  // Render the accumulated charge block layers
+  if (chargeHeight > 0) {
+    pushMatrix();
+    translate(0, -60, 0); 
+    for(int h = 0; h < chargeHeight; h += 14) {
+      for(int dx = -30; dx <= 30; dx += 15) {
+        for(int dz = -30; dz <= 30; dz += 15) {
+          if (dist(dx, 0, dz, 0, 0, 0) < 35) {
+            pushMatrix();
+            translate(dx, -h - 7, dz);
+            int type = (abs(dx) + abs(dz) + h) % 3;
+            
+            if (step < 4) {
+              if(type == 0) fill(210, 210, 220); // Pig Iron
+              else if(type == 1) fill(240, 240, 240); // Flux
+              else fill(20, 20, 20); // Coke
+            } else {
+              // Melting & glowing red hot in step 4
+              float heat = constrain(t * 1.5, 0, 1);
+              if(type == 0) fill(lerpColor(color(210,210,220), color(255,80,0), heat));
+              else if(type == 1) fill(lerpColor(color(240,240,240), color(255,60,0), heat));
+              else fill(lerpColor(color(20,20,20), color(200,40,0), heat));
+            }
+            box(12); 
+            popMatrix();
+          }
+        }
+      }
+    }
+    popMatrix();
+  }
+
+  // -- STEP 4: Air Blowers & Melting --
+  float metalLevel = 0;
+  float slagLevel = 0;
+
+  if (step == 4) {
+    // Air particles
+    fill(180, 230, 255);
+    for(int i = 0; i <= 6; i++) {
+      float airProgress = (frameCount * 2 + (i * 12)) % 40; 
+      pushMatrix();
+      rotateY(PI/6 * i);
+      translate(80 - airProgress, -105 + (airProgress * 0.8), 0);
+      sphere(3);
+      popMatrix();
+    }
+    // Drip animation
+    float dripAnimY = map(frameCount % 40, 0, 40, -60, -20);
+    pushMatrix();
+    translate(random(-15, 15), dripAnimY, random(-15, 15));
+    fill(255, 120, 0); sphere(4);
+    popMatrix();
+    
+    metalLevel = lerp(0, 45, t);
+    slagLevel = lerp(0, 15, t);
+    drawLabel("Air Heating & Melting", 0, -200, 0);
+  } else if (step > 4) {
+    metalLevel = 45;
+    slagLevel = 15;
+  }
+  
+  if (step == 5) slagLevel = lerp(15, 0, t); // Drains slag
+  if (step >= 7) metalLevel = lerp(45, 0, t); // Drains metal
+
+  // Draw the liquid metal pool
+  if (metalLevel > 0) {
+    pushMatrix();
+    translate(0, -10 - metalLevel, 0);
+    rotateZ(-0.15); 
+    fill(255, 80, 0); 
+    halfCylinder(77, metalLevel, true);
+    popMatrix();
+  }
+
+  // Draw the floating slag layer
+  if (slagLevel > 0) {
+    pushMatrix();
+    translate(0, -10 - metalLevel - slagLevel, 0);
+    rotateZ(-0.15);
+    fill(120, 160, 60); 
+    halfCylinder(77, slagLevel, true);
+    popMatrix();
+  }
+
+  // -- STEP 5: Slag Draining --
+  if (step == 5) {
+    float drop = (frameCount * 5) % 90;
+    pushMatrix();
+    translate(90, -45 + drop, 0);
+    fill(120, 160, 60);
+    sphere(6);
+    popMatrix();
+    drawLabel("Draining Slag", 120, 0, 0);
+  }
+
+  // -- STEP 6: Remove Clay Plug --
+  if (step == 6) {
+    float popOutX = lerp(-60, -130, t);
+    float popOutY = lerp(-8, 50, t);
+    pushMatrix();
+    translate(popOutX, popOutY, 0);
+    rotateZ(frameCount * 0.1);
+    fill(160, 90, 50);
+    sphere(8);
+    popMatrix();
+    drawLabel("Passage Opened!", popOutX, popOutY - 20, 0);
+  }
+
+  // -- STEP 7: Tap Metal into Ladle --
+  float ladleFill = 0;
+  if (step == 7) {
+    ladleFill = lerp(0, 40, t);
+    
+    // Flowing Lava stream down spout
+    for (int i=0; i<5; i++) {
+       float sp = (frameCount * 3 + (i * 20)) % 100 / 100.0;
+       float sx = lerp(-60, -105, sp);
+       float sy = lerp(-8, 8, sp); 
+       pushMatrix(); translate(sx, sy, 0);
+       fill(255, 120, 0); sphere(5); popMatrix();
+    }
+    // Dropping into crucible
+    for (int i=0; i<3; i++) {
+       float dp = (frameCount * 5 + (i * 30)) % 100 / 100.0;
+       float dx = -105;
+       float dy = lerp(8, 60 - ladleFill, dp);
+       pushMatrix(); translate(dx, dy, 0);
+       fill(255, 140, 0); sphere(5); popMatrix();
+    }
+  } else if (step > 7) {
+    ladleFill = 40; // Full
+  }
+
+  // Leftover Ladle remains visible in step 8
+  if (ladleFill > 0) {
+    pushMatrix();
+    translate(-125, 60 - ladleFill, 0);
+    fill(255, 100, 0);
+    cylinder(38, ladleFill, true);
+    popMatrix();
+  }
+
+  popMatrix();
+}
+
+// =========================================================
+// 3. UI AND HUD 
+// =========================================================
+void drawHUD() {
+  camera(); // Reset camera to 2D
+  noLights();
+  hint(DISABLE_DEPTH_TEST);
+  
+  // Top HUD Box
+  fill(0, 200);
+  rect(10, 10, width - 20, 100, 10);
+  
+  textAlign(LEFT, TOP);
+  fill(255);
+  textSize(24);
+  text("Cupola Furnace Operation", 20, 20);
+  
+  textSize(18);
+  fill(200, 255, 200);
+  text("Status: " + (isAnimating ? "Animating..." : "Waiting for Next Step"), 20, 55);
+  
+  fill(255, 200, 100);
+  text(stepDescriptions[currentStep], 20, 80);
+  
+  // Interactive Button (Only show if not currently animating)
+  if (!isAnimating) {
+    float btnW = 200;
+    float btnH = 50;
+    float btnX = width / 2 - btnW / 2;
+    float btnY = height - 80;
+    
+    boolean hovering = mouseX > btnX && mouseX < btnX + btnW && mouseY > btnY && mouseY < btnY + btnH;
+    
+    if (currentStep < 8) {
+      fill(hovering ? color(60, 180, 60) : color(40, 150, 40));
+    } else {
+      fill(hovering ? color(200, 60, 60) : color(150, 40, 40)); // Restart button color
+    }
+    
+    rect(btnX, btnY, btnW, btnH, 10);
+    
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(20);
+    if (currentStep < 8) {
+      text("Next Step >>", width / 2, btnY + btnH / 2 - 2);
+    } else {
+      text("Restart Cycle", width / 2, btnY + btnH / 2 - 2);
+    }
+  }
+
+  // Draw Progress Bar during animation
+  if (isAnimating) {
+    fill(50);
+    rect(width / 2 - 150, height - 60, 300, 15, 8);
+    fill(100, 200, 100);
+    rect(width / 2 - 150, height - 60, 300 * animT, 15, 8);
+  }
+
+  hint(ENABLE_DEPTH_TEST);
+}
+
+// =========================================================
+// HELPER METHODS & CUSTOM PRIMITIVES
+// =========================================================
+
+void drawLabel(String txt, float x, float y, float z) {
+  pushMatrix();
+  translate(x, y, z);
+  rotateY(-rotY); 
+  rotateX(-rotX);
+  fill(255, 255, 100);
+  textAlign(CENTER, CENTER);
+  textSize(16);
+  text(txt, 0, 0, 0);
+  popMatrix();
+}
+
+void cylinder(float r, float h, boolean cap) {
+  int sides = 30;
+  float angle = TWO_PI / sides;
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(i * angle) * r;
+    float z = sin(i * angle) * r;
+    vertex(x, 0, z); vertex(x, h, z);
+  }
+  endShape();
+  if (cap) {
+    beginShape(TRIANGLE_FAN); vertex(0, 0, 0);
+    for (int i=0; i<=sides; i++) vertex(cos(i*angle)*r, 0, sin(i*angle)*r);
+    endShape();
+    beginShape(TRIANGLE_FAN); vertex(0, h, 0);
+    for (int i=0; i<=sides; i++) vertex(cos(i*angle)*r, h, sin(i*angle)*r);
+    endShape();
+  }
+}
+
+void halfCylinder(float r, float h, boolean cap) {
+  int sides = 15; 
+  float angle = PI / sides;
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(i * angle) * r;
+    float z = sin(i * angle) * r;
+    vertex(x, 0, z); vertex(x, h, z);
+  }
+  endShape();
+  if(cap){
+     beginShape(TRIANGLE_FAN); vertex(0, 0, 0);
+     for (int i=0; i<=sides; i++) vertex(cos(i*angle)*r, 0, sin(i*angle)*r);
+     endShape();
+  }
+}
+
+void halfCone(float r, float h) {
+  int sides = 15;
+  float angle = PI / sides;
+  beginShape(TRIANGLE_FAN);
+  vertex(0, -h, 0); 
+  for (int i = 0; i <= sides; i++) {
+    vertex(cos(i * angle) * r, 0, sin(i * angle) * r);
+  }
+  endShape();
+}
