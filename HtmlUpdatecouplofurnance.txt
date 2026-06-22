@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-Fidelity Cupola Furnace 3D Simulation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #0a0c0f;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+<script>
+// =========================================================
+// FULL CUPOLA FURNACE 3D SIMULATION WITH DYNAMIC LABELS
+// =========================================================
+
+let rotY = 0;
+let rotX = -0.1;
+
+// Step Logic Variables
+let currentStep = 0;
+let animT = 0; 
+let isAnimating = false;
+
+const stepDescriptions = [
+  "Step 0: Furnace Construction. Structure, refractory brick lining, and sand bed prepared.",
+  "Step 1: Ignite the Coke Bed resting above the sand bed.",
+  "Step 2: Close the metal tapping hole with a Clay Plug.",
+  "Step 3: Feed alternate layers of Coke, Flux, and Pig Iron through the Charging Door.",
+  "Step 4: Air blowers active through Tuyeres. Charge melts and drips into the hearth.",
+  "Step 5: Drain off the accumulated slag through the Slag Hole.",
+  "Step 6: Remove the clay plug to open the passage for the molten iron.",
+  "Step 7: Hot molten metal is tapped and collected in the ladle via the Tapping Spout.",
+  "Step 8: Bottom Drop Doors open. Remaining materials and sand bed discharge."
+];
+
+function setup() {
+  createCanvas(1200, 800, WEBGL);
+  textFont('sans-serif'); // Ensures WebGL has a baseline font to render
+  noStroke();
+}
+
+function draw() {
+  background(10, 12, 15); 
+  
+  // High-End Lighting Setup
+  lights();
+  ambientLight(60, 60, 70);
+  directionalLight(200, 220, 255, -1, 1, -1); 
+  directionalLight(255, 180, 100, 1, 0.5, 1); 
+  spotLight(255, 100, 0, 0, -200, 0, 0, 1, 0, PI/2, 2); 
+
+  if (isAnimating) {
+    animT += 0.015; 
+    if (animT >= 1.0) {
+      animT = 1.0;
+      isAnimating = false;
+    }
+  } else if (currentStep === 0) {
+    rotY += 0.002; // Cinematic idle rotation
+  }
+
+  push();
+  // Adjust origin for WebGL mode
+  translate(0, 120, -320); 
+  rotateX(rotX);
+  rotateY(rotY);
+
+  drawFurnaceStructure();
+  drawDynamicSequence(currentStep, animT);
+  
+  pop();
+  drawHUD();
+}
+
+function mouseDragged() {
+  if (mouseY < height - 120) { 
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+function mousePressed() {
+  if (!isAnimating) {
+    if (mouseX > width/2 - 100 && mouseX < width/2 + 100 && mouseY > height - 80 && mouseY < height - 30) {
+      if (currentStep < 8) {
+        currentStep++;
+        animT = 0.0;
+        isAnimating = true;
+      } else {
+        currentStep = 0;
+        animT = 0.0;
+        isAnimating = false;
+        rotY = 0;
+        rotX = -0.1;
+      }
+    }
+  }
+}
+
+// =========================================================
+// 1. STATIC STRUCTURES & DIAGRAM LABELS
+// =========================================================
+function drawFurnaceStructure() {
+  push();
+  
+  // Legs & Bottom Drop Doors
+  fill(40);
+  for(let i = 0; i < 4; i++) {
+    push(); rotateY(HALF_PI * i); translate(50, 50, 50); box(15, 100, 15); pop();
+  }
+
+  let doorAngle = (currentStep === 8) ? lerp(0, -HALF_PI * 0.8, animT) : 0;
+  fill(50);
+  push(); translate(-90, 0, 0); rotateZ(doorAngle); translate(90, 0, 0); myCylinder(90, 10, true); pop();
+  drawLabel("Drop Doors", 0, 5, 0, 140, 60);
+
+  // Furnace Body (Outer Steel Shell & Inner Brick Lining)
+  push(); 
+  translate(0, -450, 0); 
+  fill(90, 100, 110); 
+  myHalfCylinder(90, 450, false); // Steel Shell
+  fill(160, 60, 40); 
+  myHalfCylinder(80, 450, false); // Brick Lining
+  pop();
+
+  drawLabel("Steel Shell / Chamber", -90, -250, 0, -180, 0);
+  drawLabel("Fire Brick Lining", 80, -280, 0, 180, 0);
+
+  // Spark Hood / Arrester at the top
+  push(); translate(0, -450, 0); fill(40); myHalfCone(110, 80); pop();
+  drawLabel("Spark Hood", 0, -490, 0, 160, -40);
+
+  // Charging Door
+  push(); translate(-75, -380, 0); fill(15, 20, 25); box(35, 60, 40); pop();
+  drawLabel("Charging Door", -75, -380, 0, -160, -30);
+
+  // Wind Box & Tuyeres
+  push(); 
+  translate(0, -120, 0); 
+  fill(180, 40, 40); 
+  myHalfCylinder(95, 30, false); // Wind box shell
+  fill(200, 50, 50); 
+  for(let i = 0; i <= 6; i++) { 
+    push(); rotateY(PI/6 * i); translate(82, 15, 0); rotateZ(HALF_PI); myCylinder(8, 25, true); pop(); 
+  } 
+  pop();
+  drawLabel("Wind Box", 95, -120, 0, 160, -20);
+  drawLabel("Tuyere Opening", -85, -110, 40, -180, -10);
+
+  // Slag Spout
+  push(); translate(75, -50, 0); rotateZ(-PI/6); fill(70); box(40, 12, 12); pop();
+  drawLabel("Slag Spout / Hole", 85, -50, 0, 160, 30);
+
+  // Tapping Spout
+  push(); translate(-80, -2, 0); rotateZ(PI/8); fill(60); box(45, 10, 18); pop();
+  drawLabel("Metal Tapping Hole", -85, -2, 0, -180, 40);
+
+  // Collection Ladle (Visible during tapping)
+  push(); translate(-125, 60, 0); fill(50); myCylinder(40, 45, true); pop();
+  
+  pop();
+}
+
+// =========================================================
+// 2. DYNAMIC SEQUENCE LOGIC & LABELS
+// =========================================================
+function drawDynamicSequence(step, t) {
+  push();
+  
+  let dropY = (step === 8) ? lerp(0, 300, t) : 0;
+
+  // Inclined Sand Bed at absolute bottom
+  push();
+  translate(0, -15 + dropY, 0);
+  rotateZ(-0.15); 
+  fill(180, 150, 100); 
+  myHalfCylinder(78, 20, true);
+  pop();
+  
+  // Dynamically label the Sand Bed
+  drawLabel("Sand Bed", 0, -15 + dropY, 0, -150, 15);
+
+  // Glowing Coke Bed resting on the sand bed
+  if (step >= 1) {
+    push();
+    translate(0, -65 + dropY, 0);
+    let scaleAmt = (step === 1) ? lerp(0, 1, t) : 1; 
+    scale(scaleAmt);
+    
+    if(step === 8) emissiveMaterial(0, 0, 0); else emissiveMaterial(150, 50, 0); 
+    let fillCol = (step === 8) ? lerpColor(color(255, 80, 0), color(60), t) : color(255, 80, 0, 220);
+    fill(fillCol);
+    myHalfCylinder(76, 45, true);
+    
+    for(let i=0; i<30; i++) {
+      push(); translate(random(-45, 45), -35, random(-10, 45)); box(10); pop();
+    }
+    emissiveMaterial(0, 0, 0); 
+    pop();
+
+    drawLabel("Coke Bed", 0, -70 + dropY, 0, 160, -10);
+  }
+
+  // Clay Plug
+  if (step >= 2 && step < 6) {
+    let moveIn = (step === 2) ? lerp(-120, -60, t) : -60;
+    push(); translate(moveIn, -8, 0); fill(160, 90, 50); sphere(8); pop();
+  }
+
+  // Layered Charging (Coke, Flux, Metal)
+  let chargeHeight = 0;
+  if (step === 3) chargeHeight = lerp(0, 180, t);
+  else if (step > 3 && step < 4) chargeHeight = 180;
+  else if (step === 4) chargeHeight = lerp(180, 0, t); 
+
+  if (chargeHeight > 0) {
+    push();
+    translate(0, -80, 0); 
+    for(let h = 0; h < chargeHeight; h += 14) {
+      for(let dx = -35; dx <= 35; dx += 16) {
+        for(let dz = -35; dz <= 35; dz += 16) {
+          if (dist(dx, 0, dz, 0, 0, 0) < 40) {
+            push();
+            translate(dx, -h - 7, dz);
+            let type = (abs(dx) + abs(dz) + h) % 3;
+            
+            if (step < 4) {
+              if(type === 0) fill(180, 190, 200); // Pig Iron
+              else if(type === 1) fill(230, 235, 230); // Flux
+              else fill(25, 25, 25); // Coke
+            } else {
+              let heat = constrain(t * 1.8, 0, 1);
+              emissiveMaterial(heat * 100, heat * 40, 0);
+              if(type === 0) fill(lerpColor(color(180,190,200), color(255,200,50), heat));
+              else if(type === 1) fill(lerpColor(color(230,235,230), color(255,100,0), heat));
+              else fill(lerpColor(color(25,25,25), color(255,50,0), heat));
+            }
+            box(12); 
+            emissiveMaterial(0,0,0);
+            pop();
+          }
+        }
+      }
+    }
+    pop();
+    drawLabel("Alternating Metal/Flux/Coke", 0, -180, 0, -200, -20);
+  }
+
+  // Melting Dynamics: Dripping into the hearth
+  let metalLevel = 0;
+  let slagLevel = 0;
+
+  if (step === 4) {
+    for(let i=0; i<5; i++) {
+      let dripT = (frameCount * 3 + i * 20) % 100 / 100.0;
+      let dY = lerp(-100, -15, dripT);
+      push();
+      translate(random(-20, 20), dY, random(-20, 20));
+      emissiveMaterial(255, 150, 0); fill(255, 200, 50); sphere(4); emissiveMaterial(0,0,0);
+      pop();
+    }
+    metalLevel = lerp(0, 45, t);
+    slagLevel = lerp(0, 15, t);
+  } else if (step > 4) {
+    metalLevel = 45;
+    slagLevel = 15;
+  }
+  
+  if (step === 5) slagLevel = lerp(15, 0, t); 
+  if (step >= 7) metalLevel = lerp(45, 0, t); 
+
+  // Liquid pools at the bottom
+  if (metalLevel > 0) {
+    push(); translate(0, -15 - metalLevel, 0); rotateZ(-0.15); 
+    emissiveMaterial(150, 50, 0); fill(255, 100, 0); myHalfCylinder(77, metalLevel, true); emissiveMaterial(0,0,0);
+    pop();
+    drawLabel("Molten Metal", 0, -15 - metalLevel/2, 0, -180, -10);
+  }
+
+  if (slagLevel > 0) {
+    push(); translate(0, -15 - metalLevel - slagLevel, 0); rotateZ(-0.15);
+    fill(140, 180, 80, 220); myHalfCylinder(77, slagLevel, true);
+    pop();
+    drawLabel("Slag Layer", 0, -15 - metalLevel - slagLevel/2, 0, 160, 0);
+  }
+
+  // Slag Draining
+  if (step === 5) {
+    let drop = (frameCount * 5) % 90;
+    push(); translate(90, -45 + drop, 0); fill(140, 180, 80); sphere(6); pop();
+  }
+
+  // Remove Plug
+  if (step === 6) {
+    let pX = lerp(-60, -130, t); let pY = lerp(-8, 50, t);
+    push(); translate(pX, pY, 0); rotateZ(frameCount * 0.1); fill(160, 90, 50); sphere(8); pop();
+  }
+
+  // Metal Tapping
+  let ladleFill = (step === 7) ? lerp(0, 40, t) : (step > 7 ? 40 : 0);
+  if (step === 7) {
+    for (let i=0; i<8; i++) {
+       let sp = (frameCount * 4 + (i * 15)) % 100 / 100.0;
+       let sx = lerp(-60, -105, sp); let sy = lerp(-8, 8, sp); 
+       push(); translate(sx, sy, 0); emissiveMaterial(255,100,0); fill(255, 200, 50); sphere(4); pop();
+       
+       let dp = (frameCount * 6 + (i * 15)) % 100 / 100.0;
+       let dy = lerp(8, 60 - ladleFill, dp);
+       push(); translate(-105, dy, 0); sphere(4); emissiveMaterial(0,0,0); pop();
+    }
+  }
+
+  if (ladleFill > 0) {
+    push(); translate(-125, 60 - ladleFill, 0); emissiveMaterial(100,20,0); fill(255, 80, 0); myCylinder(38, ladleFill, true); emissiveMaterial(0,0,0); pop();
+  }
+
+  pop();
+}
+
+// =========================================================
+// 3. UI AND HELPER METHODS
+// =========================================================
+
+// Generates leader lines and text labels that track elements in 3D space
+function drawLabel(txt, tX, tY, tZ, offX, offY) {
+  push();
+  
+  // Draw Leader Line (Reset emissive so the line doesn't glow, but keep it white)
+  emissiveMaterial(0, 0, 0);
+  stroke(255, 255, 255, 200);
+  strokeWeight(2);
+  line(tX, tY, tZ, tX + offX, tY + offY, tZ);
+  noStroke();
+
+  // Move to the end of the leader line
+  translate(tX + offX, tY + offY, tZ);
+  
+  // Billboard the text so it always faces the camera
+  rotateY(-rotY); 
+  rotateX(-rotX);
+
+  // Disable depth so text renders perfectly on top of structures
+  drawingContext.disable(drawingContext.DEPTH_TEST);
+  
+  // VERY IMPORTANT: Emissive material prevents shadows from rendering the text black
+  emissiveMaterial(255, 230, 120);
+  fill(255, 230, 120); 
+  
+  textAlign(CENTER, CENTER); 
+  textSize(14);
+  text(txt, 0, 0); 
+  
+  drawingContext.enable(drawingContext.DEPTH_TEST);
+  pop();
+}
+
+function drawHUD() {
+  push();
+  resetMatrix(); // Clear 3D camera transforms
+  translate(-width / 2, -height / 2); // Move origin to top-left for 2D UI
+  
+  drawingContext.disable(drawingContext.DEPTH_TEST);
+  noLights(); // Safely disable lighting for the 2D HUD text
+  
+  fill(15, 15, 20, 220); rect(10, 10, width - 20, 100, 10);
+  textAlign(LEFT, TOP); fill(255); textSize(24); text("Cupola Furnace: High-Fidelity Simulation", 20, 20);
+  
+  textSize(18); fill(150, 255, 150); text("Status: " + (isAnimating ? "Animating..." : "Waiting for Next Step"), 20, 55);
+  fill(255, 200, 100); text(stepDescriptions[currentStep], 20, 80);
+  
+  if (!isAnimating) {
+    let bX = width/2 - 100, bY = height - 80;
+    let hov = mouseX > bX && mouseX < bX+200 && mouseY > bY && mouseY < bY+50;
+    fill(hov ? (currentStep < 8 ? color(60,180,60) : color(200,60,60)) : (currentStep < 8 ? color(40,150,40) : color(150,40,40)));
+    rect(bX, bY, 200, 50, 10);
+    fill(255); textAlign(CENTER, CENTER); textSize(20);
+    text(currentStep < 8 ? "Next Step >>" : "Restart Cycle", width/2, bY + 25);
+  }
+
+  if (isAnimating) {
+    fill(50); rect(width/2 - 150, height - 60, 300, 15, 8);
+    fill(100, 200, 100); rect(width/2 - 150, height - 60, 300 * animT, 15, 8);
+  }
+  
+  drawingContext.enable(drawingContext.DEPTH_TEST);
+  pop();
+}
+
+// Custom geometries 
+function myCylinder(r, h, cap) {
+  let sides = 32; let angle = TWO_PI / sides;
+  beginShape(QUAD_STRIP);
+  for (let i=0; i<=sides; i++) { let x = cos(i*angle)*r, z = sin(i*angle)*r; vertex(x,0,z); vertex(x,h,z); }
+  endShape();
+  if (cap) {
+    beginShape(TRIANGLE_FAN); vertex(0,0,0); for(let i=0; i<=sides; i++) vertex(cos(i*angle)*r, 0, sin(i*angle)*r); endShape();
+    beginShape(TRIANGLE_FAN); vertex(0,h,0); for(let i=0; i<=sides; i++) vertex(cos(i*angle)*r, h, sin(i*angle)*r); endShape();
+  }
+}
+
+function myHalfCylinder(r, h, cap) {
+  let sides = 16; let angle = PI / sides;
+  beginShape(QUAD_STRIP);
+  for (let i=0; i<=sides; i++) { let x = cos(i*angle)*r, z = sin(i*angle)*r; vertex(x,0,z); vertex(x,h,z); }
+  endShape();
+  if(cap){ beginShape(TRIANGLE_FAN); vertex(0,0,0); for(let i=0; i<=sides; i++) vertex(cos(i*angle)*r, 0, sin(i*angle)*r); endShape(); }
+}
+
+function myHalfCone(r, h) {
+  let sides = 16; let angle = PI / sides;
+  beginShape(TRIANGLE_FAN); vertex(0,-h,0);
+  for (let i=0; i<=sides; i++) vertex(cos(i*angle)*r, 0, sin(i*angle)*r);
+  endShape();
+}
+</script>
+</body>
+</html>
