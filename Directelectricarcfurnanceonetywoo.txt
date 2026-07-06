@@ -1,0 +1,450 @@
+// DIRECT ARC FURNACE - 3D TRANSPARENT INSIDE FLUID ANIMATION
+// Fully coded step-by-step procedure for APDE Android with 3D Rotation
+
+int currentStep = 1;
+int totalSteps = 9;
+
+// --- 3D Camera Rotation Variables ---
+float rotX = radians(-8);
+float rotY = radians(15);
+
+// --- Animation & Mechanics Variables ---
+float targetTilt = 0, currentTilt = 0;
+float targetElectrodeY = -220, currentElectrodeY = -220;
+float targetRoofX = 0, currentRoofX = 0; 
+float targetMelt = 0.0, meltProgress = 0.0;
+
+// --- Fluid Volumes ---
+float targetSteelVol = 1.0, currentSteelVol = 1.0;
+float targetSlagVol = 1.0, currentSlagVol = 1.0;
+
+// --- Charge Particles ---
+int numParticles = 120;
+float[] px = new float[numParticles];
+float[] py = new float[numParticles];
+float[] pz = new float[numParticles];
+int[] pType = new int[numParticles]; // 0: Scrap, 1: Coke, 2: Flux
+boolean[] pLanded = new boolean[numParticles];
+
+// --- UI Text ---
+String[] stepDescriptions = {
+  "",
+  "STEP 1: INTERNAL OVERVIEW\nTransparent cross-section showing the inner refractory hearth, steel shell, and movable roof.",
+  "STEP 2: CHARGING MATERIALS\nRoof opens. Solid iron scrap (grey), coke (black), and flux (white) are loaded into the furnace.",
+  "STEP 3: ROOF CLOSURE\nThe roof swings back to seal the chamber. This contains the extreme heat generated in the next step.",
+  "STEP 4: ARC IGNITION\nElectrodes lower. Massive electricity generates 2000°C arcs between the graphite and the metal charge.",
+  "STEP 5: MELTING PHASE\nObserve the solid materials melting. A bubbling liquid pool forms at the bottom of the hearth.",
+  "STEP 6: REFINING (FLUID DYNAMICS)\nFully molten. White flux binds with impurities to form a lighter bubbling Slag layer over the heavier pure Steel.",
+  "STEP 7: EXTRACTION PREP\nArcs are stopped. Electrodes and roof are lifted clear so the furnace can be safely tilted.",
+  "STEP 8: SLAG REMOVAL\nFurnace tilts backward. The lighter upper layer (Slag) is poured off into a slag pot.",
+  "STEP 9: POURING MOLTEN STEEL\nFurnace tilts forward. The refined, pure liquid steel is poured into a ladle for casting."
+};
+
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  smooth(4);
+  textAlign(CENTER, CENTER);
+  
+  resetParticles();
+}
+
+void resetParticles() {
+  for (int i = 0; i < numParticles; i++) {
+    float angle = random(PI); // Keep in back half for cross section
+    float r = random(5, 75);
+    px[i] = cos(angle) * r;
+    py[i] = random(-400, -150); // Start high in the air
+    pz[i] = -sin(angle) * r;    
+    pLanded[i] = false;
+    
+    float rand = random(1);
+    if (rand < 0.55) pType[i] = 0;      // 55% Iron
+    else if (rand < 0.75) pType[i] = 1; // 20% Coke
+    else pType[i] = 2;                  // 25% Flux
+  }
+}
+
+void draw() {
+  background(215, 225, 235);
+  
+  // --- Physics & Lerping ---
+  currentTilt = lerp(currentTilt, targetTilt, 0.05);
+  currentElectrodeY = lerp(currentElectrodeY, targetElectrodeY, 0.08);
+  currentRoofX = lerp(currentRoofX, targetRoofX, 0.05);
+  meltProgress = lerp(meltProgress, targetMelt, 0.02);
+  currentSteelVol = lerp(currentSteelVol, targetSteelVol, 0.02);
+  currentSlagVol = lerp(currentSlagVol, targetSlagVol, 0.03);
+
+  // Trigger fluid draining based on tilt angle
+  if (currentStep == 8 && currentTilt < -0.3) targetSlagVol = 0.0;
+  if (currentStep == 9 && currentTilt > 0.4) targetSteelVol = 0.0;
+
+  // --- 3D Camera & Lighting ---
+  pushMatrix();
+  translate(width * 0.5, height * 0.55, -50);
+  
+  // Apply dynamic rotation controlled by user swipe/drag
+  rotateX(rotX);  
+  rotateY(rotY);  
+  
+  lights();
+  directionalLight(255, 250, 240, 0, 1, -1);
+  ambientLight(110, 110, 110);
+
+  // --- 1. Base & Auxiliary Containers ---
+  fill(45, 60, 75);
+  pushMatrix(); translate(0, 130, 0); box(180, 20, 120); popMatrix(); 
+  fill(30);
+  pushMatrix(); translate(-60, 100, 0); drawCylinder(15, 40); popMatrix(); 
+  pushMatrix(); translate(60, 100, 0); drawCylinder(15, 40); popMatrix();
+
+  if (currentStep >= 8) {
+    // Slag Pot
+    pushMatrix();
+    translate(-170, 120, 0);
+    fill(70); drawCylinder(35, 40);
+    if (currentSlagVol < 0.95) { // If filling
+      translate(0, -15, 0); fill(150, 130, 90); drawCylinder(32, 10);
+    }
+    popMatrix();
+  }
+  if (currentStep >= 9) {
+    // Ladle
+    pushMatrix();
+    translate(190, 120, 0);
+    fill(45, 60, 75); drawCylinder(45, 50);
+    if (currentSteelVol < 0.95) { // If filling
+      translate(0, -15, 0); fill(255, 110, 0); drawCylinder(42, 20);
+    }
+    popMatrix();
+  }
+
+  // --- 2. Tilting Furnace Body ---
+  pushMatrix();
+  translate(0, 80, 0); // Roller Pivot
+  rotateZ(currentTilt);
+  translate(0, -80, 0);
+
+  // Outer Shell (Transparent Cut-Section)
+  fill(70, 80, 95);
+  pushMatrix(); translate(0, 40, 0); drawHalfCylinder(110, 60); popMatrix();
+  pushMatrix(); translate(0, 70, 0); drawHalfSphere(110); popMatrix();
+  
+  // Refractory Lining
+  fill(160, 80, 50);
+  pushMatrix(); translate(0, 40, 0); drawHalfCylinder(95, 62); popMatrix();
+  pushMatrix(); translate(0, 70, 0); drawHalfSphere(95); popMatrix();
+
+  // Spouts
+  pushMatrix(); translate(110, 20, -20); fill(70, 80, 95); box(50, 25, 40); popMatrix(); // Right
+  pushMatrix(); translate(-110, 30, -20); fill(70, 80, 95); box(40, 15, 30); popMatrix(); // Left
+
+  // --- 3. Internal Charge & Bubbling Fluid Dynamics ---
+  pushMatrix();
+  translate(0, 55, 0);
+
+  // Solids
+  if (meltProgress < 0.98) {
+    for (int i = 0; i < numParticles; i++) {
+      if (currentStep == 2 && !pLanded[i]) {
+        py[i] += random(8, 16);
+        float limit = 15 - (pz[i]/3) + random(-10, 10);
+        if (py[i] > limit) { py[i] = limit; pLanded[i] = true; }
+      }
+      
+      float alpha = map(meltProgress, 0, 1, 255, 0);
+      pushMatrix();
+      translate(px[i], py[i], pz[i]);
+      noStroke();
+      if (pType[i] == 0) { fill(130, alpha); box(10); } 
+      else if (pType[i] == 1) { fill(20, alpha); sphere(6); } 
+      else { fill(230, 220, 200, alpha); box(7); } 
+      stroke(0);
+      popMatrix();
+    }
+  }
+
+  // Liquids (Appear as meltProgress increases)
+  if (meltProgress > 0.05) {
+    noStroke();
+    
+    // Calculate heights based on volume and melt progress
+    float maxSteelH = 35;
+    float currentSteelH = maxSteelH * currentSteelVol * meltProgress;
+    
+    float maxSlagH = 10;
+    float currentSlagH = maxSlagH * currentSlagVol * meltProgress;
+    
+    // Wave animation for bubbling effect
+    float wave = sin(frameCount * 0.1) * (2 * meltProgress);
+    
+    // Molten Steel (Orange)
+    if (currentSteelH > 1) {
+      fill(255, 110, 0, meltProgress * 255);
+      pushMatrix(); 
+      translate(0, 30 - (currentSteelH/2), 0); 
+      drawHalfCylinder(88, currentSteelH); 
+      // Top fluid surface
+      translate(0, -(currentSteelH/2) + wave, 0);
+      drawFluidSurface(88);
+      popMatrix();
+    }
+
+    // Slag Layer (Brown) floating on top
+    if (currentSlagH > 1) {
+      fill(150, 130, 90, meltProgress * 255);
+      pushMatrix();
+      translate(0, 30 - currentSteelH - (currentSlagH/2) + wave, 0);
+      drawHalfCylinder(88, currentSlagH);
+      // Top fluid surface
+      translate(0, -(currentSlagH/2) + (wave*1.2), 0);
+      drawFluidSurface(88);
+      popMatrix();
+    }
+    stroke(0);
+  }
+  popMatrix(); // End Hearth
+
+  // Pouring Streams
+  if (currentStep == 8 && currentTilt < -0.3 && currentSlagVol > 0.05) {
+    pushMatrix(); translate(-130, 25, -20); fill(150, 130, 90); drawCylinder(7, 130); popMatrix();
+  }
+  if (currentStep == 9 && currentTilt > 0.4 && currentSteelVol > 0.05) {
+    pushMatrix(); translate(130, 20, -20); fill(255, 110, 0); drawCylinder(12, 160); popMatrix(); 
+  }
+  
+  popMatrix(); // End Tilting Assembly
+
+  // --- 4. Movable Roof & Electrodes ---
+  pushMatrix();
+  translate(currentRoofX, 0, 0);
+
+  // Roof Base
+  fill(70, 80, 95);
+  pushMatrix(); translate(0, -20, 0); drawHalfCylinder(110, 15); popMatrix();
+  fill(160, 80, 50);
+  pushMatrix(); translate(0, -5, 0); drawHalfCylinder(95, 5); popMatrix();
+
+  // Graphite Electrodes
+  translate(0, currentElectrodeY, -25);
+  fill(30);
+  pushMatrix(); translate(-25, 60, 0); drawCylinder(10, 160); popMatrix();
+  pushMatrix(); translate(0, 60, -20); drawCylinder(10, 160); popMatrix();
+  pushMatrix(); translate(25, 60, 0); drawCylinder(10, 160); popMatrix();
+
+  // Blinding Arc Animation (Steps 4 & 5)
+  if ((currentStep == 4 || currentStep == 5) && currentElectrodeY > -40) {
+    noStroke();
+    fill(255, 255, 230, random(180, 255));
+    pushMatrix(); translate(-25, 145, 0); sphere(random(15, 28)); popMatrix();
+    pushMatrix(); translate(0, 145, -20); sphere(random(15, 28)); popMatrix();
+    pushMatrix(); translate(25, 145, 0); sphere(random(15, 28)); popMatrix();
+    
+    // Spark lines
+    stroke(255, 255, 100);
+    strokeWeight(2);
+    for(int s=0; s<4; s++) {
+      line(random(-35, 35), 140, random(-20, 10), random(-40, 40), 185, random(-30, 0));
+    }
+    strokeWeight(1);
+    stroke(0);
+  }
+  popMatrix(); 
+  
+  // Labels for Step 1
+  if (currentStep == 1) draw3DLabels();
+
+  popMatrix(); // End Camera Scene
+
+  // --- 5. 2D User Interface Overlay ---
+  hint(DISABLE_DEPTH_TEST);
+  camera();
+  noLights();
+  
+  // UI Panel
+  fill(250, 245);
+  rectMode(CENTER);
+  rect(width/2, height * 0.88, width * 0.95, height * 0.20, 15);
+  
+  fill(20);
+  textSize(width * 0.022);
+  text(stepDescriptions[currentStep], width/2, height * 0.88);
+
+  // Button
+  float btnW = width * 0.22;
+  float btnH = height * 0.12;
+  float btnX = width - (btnW/2) - 20;
+  float btnY = 20 + (btnH/2);
+  
+  fill(40, 120, 200);
+  rect(btnX, btnY, btnW, btnH, 10);
+  fill(255);
+  textSize(width * 0.025);
+  text(currentStep < totalSteps ? "NEXT STEP" : "RESTART", btnX, btnY - 10);
+  
+  textSize(width * 0.015);
+  fill(200);
+  text("Progress: " + currentStep + " / " + totalSteps, btnX, btnY + 15);
+  
+  hint(ENABLE_DEPTH_TEST);
+}
+
+// --- Interaction Logic ---
+void mousePressed() {
+  float btnW = width * 0.22;
+  float btnH = height * 0.12;
+  float btnX = width - (btnW/2) - 20;
+  float btnY = 20 + (btnH/2);
+  
+  // Check if pressing the UI Button
+  if (mouseX > btnX - btnW/2 && mouseX < btnX + btnW/2 &&
+      mouseY > btnY - btnH/2 && mouseY < btnY + btnH/2) {
+    advanceStep();
+  }
+}
+
+// Enable 3D Rotation via Swipe/Drag
+void mouseDragged() {
+  float btnW = width * 0.22;
+  float btnH = height * 0.12;
+  float btnX = width - (btnW/2) - 20;
+  float btnY = 20 + (btnH/2);
+  
+  // Only rotate if the user is not dragging across the Next Step button
+  if (!(mouseX > btnX - btnW/2 && mouseX < btnX + btnW/2 &&
+        mouseY > btnY - btnH/2 && mouseY < btnY + btnH/2)) {
+          
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+    
+    // Restrict extreme up/down angles so the model doesn't flip entirely upside down
+    rotX = constrain(rotX, -HALF_PI, HALF_PI);
+  }
+}
+
+void advanceStep() {
+  currentStep++;
+  if (currentStep > totalSteps) {
+    currentStep = 1;
+    resetParticles();
+    targetMelt = 0.0; meltProgress = 0.0;
+    targetSteelVol = 1.0; currentSteelVol = 1.0;
+    targetSlagVol = 1.0; currentSlagVol = 1.0;
+    rotX = radians(-8); // Reset camera angle on restart
+    rotY = radians(15);
+  }
+
+  // Animation State Machine
+  switch(currentStep) {
+    case 1: targetRoofX = 0; targetElectrodeY = -220; targetTilt = 0; break;
+    case 2: targetRoofX = -180; break; 
+    case 3: targetRoofX = 0; break;
+    case 4: targetElectrodeY = -10; break; // Lower to arc
+    case 5: targetMelt = 0.5; break;       // Melting starts
+    case 6: targetMelt = 1.0; break;       // Fully fluid bubbling
+    case 7: targetElectrodeY = -220; targetRoofX = -180; break; // Clear out
+    case 8: targetTilt = -0.45; break;     // Tilt back for slag
+    case 9: targetTilt = 0.55; break;      // Tilt forward for steel
+  }
+}
+
+// --- Custom Geometry for Internal Viewing ---
+
+void drawCylinder(float r, float h) {
+  int sides = 20;
+  float angle = TWO_PI / sides;
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(i * angle) * r;
+    float z = sin(i * angle) * r;
+    vertex(x, -h/2, z); vertex(x, h/2, z);
+  }
+  endShape();
+  // Caps
+  beginShape(TRIANGLE_FAN); vertex(0, -h/2, 0);
+  for (int i = 0; i <= sides; i++) vertex(cos(i*angle)*r, -h/2, sin(i*angle)*r);
+  endShape();
+  beginShape(TRIANGLE_FAN); vertex(0, h/2, 0);
+  for (int i = 0; i <= sides; i++) vertex(cos(i*angle)*r, h/2, sin(i*angle)*r);
+  endShape();
+}
+
+void drawHalfCylinder(float r, float h) {
+  int sides = 20;
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides/2; i++) {
+    float angle = PI + (PI / (sides/2) * i); 
+    float x = cos(angle) * r;
+    float z = sin(angle) * r;
+    vertex(x, -h/2, z); vertex(x, h/2, z);
+  }
+  endShape();
+  // Cut faces
+  beginShape(QUADS);
+  vertex(-r, -h/2, 0); vertex(-r, h/2, 0); vertex(0, h/2, 0); vertex(0, -h/2, 0);
+  vertex(r, -h/2, 0); vertex(r, h/2, 0); vertex(0, h/2, 0); vertex(0, -h/2, 0);
+  endShape();
+}
+
+void drawHalfSphere(float r) {
+  int uRes = 20;
+  int vRes = 10;
+  for (int j = 0; j < vRes/2; j++) {
+    float t1 = map(j, 0, vRes/2, 0, HALF_PI);
+    float t2 = map(j+1, 0, vRes/2, 0, HALF_PI);
+    beginShape(QUAD_STRIP);
+    for (int i = 0; i <= uRes/2; i++) {
+      float phi = PI + map(i, 0, uRes/2, 0, PI); 
+      vertex(r * sin(t1) * cos(phi), r * cos(t1), r * sin(t1) * sin(phi));
+      vertex(r * sin(t2) * cos(phi), r * cos(t2), r * sin(t2) * sin(phi));
+    }
+    endShape();
+  }
+  // Cut face plate
+  beginShape(TRIANGLE_FAN);
+  vertex(0,0,0);
+  for (int j = 0; j <= vRes/2; j++) {
+    float t = map(j, 0, vRes/2, 0, HALF_PI);
+    vertex(-r * sin(t), r * cos(t), 0);
+  }
+  for (int j = vRes/2; j >= 0; j--) {
+    float t = map(j, 0, vRes/2, 0, HALF_PI);
+    vertex(r * sin(t), r * cos(t), 0);
+  }
+  endShape();
+}
+
+void drawFluidSurface(float r) {
+  // Draws a flat semi-circle for the top of the liquid
+  int sides = 20;
+  beginShape(TRIANGLE_FAN);
+  vertex(0, 0, 0);
+  for (int i = 0; i <= sides/2; i++) {
+    float angle = PI + (PI / (sides/2) * i);
+    vertex(cos(angle) * r, 0, sin(angle) * r);
+  }
+  endShape();
+}
+
+void draw3DLabels() {
+  fill(0);
+  textSize(14);
+  
+  text("GRAPHITE ELECTRODES", 0, -250);
+  stroke(0); strokeWeight(2); line(0, -230, 0, -90);
+  
+  text("STEEL SHELL", -170, -20);
+  line(-170, -10, -110, 40);
+  
+  text("REFRACTORY LINING", -170, 70);
+  line(-170, 70, -90, 70);
+  
+  text("SLAG SPOUT", -150, 120);
+  line(-150, 110, -110, 30);
+  
+  text("POURING SPOUT", 160, -20);
+  line(160, -10, 110, 20);
+  
+  strokeWeight(1);
+}
