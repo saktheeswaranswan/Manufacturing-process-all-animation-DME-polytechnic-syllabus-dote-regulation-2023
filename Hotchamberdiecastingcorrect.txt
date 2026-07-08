@@ -1,0 +1,267 @@
+// Continuous Hot Chamber Die Casting Animation (With Intake Duct/Port)
+// Designed for APDE (Processing for Android)
+
+int time = 0;
+float plungerY = 250;
+float dieOffset = 0;
+float partY = 200;
+float partX = 245;
+boolean partVisible = false;
+color partColor;
+float ejectorPinExt = 0;
+
+// List to hold finished parts moving on the conveyor
+ArrayList<PVector> finishedParts = new ArrayList<PVector>();
+
+void setup() {
+  size(800, 600); // Standard landscape canvas
+  noStroke();
+}
+
+void draw() {
+  background(40, 45, 50); // Industrial dark factory background
+  
+  // Advance animation timer (Cycles every 300 frames)
+  time++;
+  if (time > 300) {
+    time = 0;
+    // Add the fallen part to the conveyor belt list
+    finishedParts.add(new PVector(partX, 490)); 
+    partVisible = false;
+  }
+  
+  // --- STATE MACHINE LOGIC ---
+  if (time < 60) {
+    // 1. Plunger goes down, blocking duct & injecting metal
+    plungerY = map(time, 0, 60, 250, 350);
+    partColor = color(255, 120, 0); // Glowing liquid orange
+    partVisible = true;
+    partY = 200;
+    partX = 245; // Centered in the closed die
+    dieOffset = 0;
+    ejectorPinExt = 0;
+  } 
+  else if (time < 120) {
+    // 2. Part cools in the closed mold
+    float t = map(time, 60, 120, 0, 1);
+    // Interpolate from Hot Orange to Cold Silver
+    partColor = lerpColor(color(255, 120, 0), color(190, 190, 200), t);
+  } 
+  else if (time < 160) {
+    // 3. Movable die opens (slides to the LEFT)
+    dieOffset = map(time, 120, 160, 0, 130);
+    partX = 245 - dieOffset; 
+  }
+  else if (time < 190) {
+    // 4. Ejector pins (in movable die) push part out to the RIGHT
+    ejectorPinExt = map(time, 160, 190, 0, 35);
+    partX = (245 - dieOffset) + ejectorPinExt;
+  }
+  else if (time < 240) {
+    // 5. Part falls down to the conveyor
+    ejectorPinExt = map(time, 190, 240, 35, 0); // Pins snap back
+    partY = map(time, 190, 240, 200, 490);      // Part drops
+  } 
+  else if (time <= 300) {
+    // 6. Plunger retracts up, uncovers duct, die slams shut
+    dieOffset = map(time, 240, 300, 130, 0);
+    plungerY = map(time, 240, 300, 350, 250);
+  }
+
+  // --- RENDERING PIPELINE ---
+  drawFurnaceAndBricks();
+  drawGooseneck();
+  drawPlunger();
+  drawConveyor();
+  drawDieAssembly();
+  drawActivePart();
+  updateAndDrawFinishedParts();
+}
+
+void drawFurnaceAndBricks() {
+  // Brick Furnace Shell (Outer)
+  fill(160, 75, 45); // Brick red
+  rect(420, 280, 350, 280, 10);
+  
+  // Draw Brick Pattern lines
+  stroke(90, 40, 20);
+  strokeWeight(2);
+  for(int y = 280; y <= 560; y += 20) {
+    line(420, y, 770, y);
+    int offset = (y % 40 == 0) ? 0 : 20;
+    for(int x = 420 + offset; x <= 770; x += 40) {
+      if (x < 770) line(x, y, x, y + 20);
+    }
+  }
+  noStroke();
+  
+  // Refractory Liner / Interior
+  fill(50, 45, 45);
+  rect(450, 300, 290, 240, 10);
+  
+  // Molten Metal Pool in the Hot Chamber
+  fill(255, 80, 0);
+  rect(470, 340, 250, 180, 5, 5, 20, 20); 
+  
+  // Gas Burner (Underneath)
+  fill(80);
+  rect(560, 500, 150, 30, 5); 
+  
+  // Rearing Gas Flame
+  fill(50, 150, 255, 200); 
+  ellipse(530, 515, random(70, 90), 18);
+  fill(255, random(150, 220), 0, 220); 
+  ellipse(500, 515, random(60, 80), 25);
+  ellipse(540, 510, random(40, 60), 35);
+}
+
+void drawGooseneck() {
+  // 1. Outer Gooseneck Housing
+  stroke(100);
+  strokeWeight(40);
+  strokeJoin(ROUND);
+  noFill();
+  beginShape();
+  vertex(640, 200); 
+  vertex(640, 480);
+  vertex(520, 480);
+  vertex(420, 200);
+  vertex(280, 200); 
+  endShape();
+  
+  // 2. Hollow Interior Cutaway (Dark Empty Space)
+  stroke(30);
+  strokeWeight(16);
+  beginShape();
+  vertex(640, 200); 
+  vertex(640, 480);
+  vertex(520, 480);
+  vertex(420, 200);
+  vertex(280, 200); 
+  endShape();
+  noStroke();
+  
+  // 3. The Intake Duct / Port (Side Cutout)
+  float plungerBottom = plungerY + 120; // 120 is the head height
+  float portY = 380;
+  float portSize = 30;
+  
+  // Logic: Is the plunger blocking the side duct?
+  if (plungerY <= portY && plungerBottom >= portY + portSize) {
+    fill(180, 60, 0); // Darkened/blocked by the green plunger inside
+  } else {
+    fill(255, 120, 0); // Bright orange metal flowing in from the pot!
+  }
+  // Draw the duct breaking through the left wall of the cylinder
+  rect(618, portY, 14, portSize);
+  
+  // 4. Molten Metal Inside the Gooseneck
+  float liquidTop = plungerBottom;
+  // If plunger is lifted above the port, metal fills up to the port level
+  if (plungerBottom < portY + 10) {
+    liquidTop = portY + portSize; 
+  }
+  
+  noFill();
+  if (time < 60) {
+    // INJECTING - Pushed all the way into the nozzle
+    stroke(255, 120, 0);
+    strokeWeight(16);
+    beginShape();
+    vertex(640, max(plungerBottom, 200)); 
+    vertex(640, 480);
+    vertex(520, 480);
+    vertex(420, 200);
+    vertex(260, 200); // Shoots into die
+    endShape();
+  } else {
+    // IDLE / REFILLING - Metal rests in the neck
+    stroke(255, 80, 0);
+    strokeWeight(16);
+    beginShape();
+    vertex(640, liquidTop);
+    vertex(640, 480);
+    vertex(520, 480);
+    vertex(420, 200);
+    vertex(300, 200); // Rests near nozzle tip
+    endShape();
+  }
+  noStroke();
+}
+
+void drawPlunger() {
+  // Drawn specifically to fit EXACTLY inside the hollow core cutaway
+  
+  // Power Cylinder Shaft (Thin rod)
+  fill(120, 150, 130);
+  rect(636, plungerY - 200, 8, 200);
+  
+  // Plunger Head (Pushes the metal and blocks the duct)
+  fill(50, 150, 80); 
+  rect(632, plungerY, 16, 120, 2);
+}
+
+void drawDieAssembly() {
+  // Fixed Die (Right side, connected to nozzle)
+  fill(150, 155, 160);
+  rect(260, 80, 90, 240, 5);
+  
+  // Movable Die (Left side, slides away)
+  fill(140, 145, 150);
+  rect(170 - dieOffset, 80, 90, 240, 5);
+  
+  // Die Cavity Detail (Dark hollow cutout when empty)
+  fill(30, 35, 40); 
+  if (dieOffset > 0) {
+    rect(260, 130, 12, 140); // Fixed side
+    rect(248 - dieOffset, 130, 12, 140); // Movable side
+  }
+  
+  // Ejector Pins (Built into movable die)
+  stroke(200);
+  strokeWeight(6);
+  line(100 - dieOffset, 150, 245 - dieOffset + ejectorPinExt, 150);
+  line(100 - dieOffset, 250, 245 - dieOffset + ejectorPinExt, 250);
+  noStroke();
+}
+
+void drawActivePart() {
+  if (partVisible) {
+    fill(partColor);
+    // Intricate die-cast part shape
+    rect(partX - 10, partY - 70, 20, 140, 4); 
+    rect(partX - 25, partY - 40, 50, 25, 3);  
+    rect(partX - 25, partY + 20, 50, 25, 3);  
+  }
+}
+
+void drawConveyor() {
+  // Heavy-duty industrial conveyor belt (Bottom Left)
+  fill(70);
+  rect(20, 530, 380, 40, 15);
+  
+  // Animate conveyor mechanism
+  fill(110);
+  for (int i = 0; i <= 10; i++) {
+    float xPos = 40 + (i * 40) - (frameCount % 40);
+    if (xPos > 20 && xPos < 380) {
+      ellipse(xPos, 550, 22, 22);
+    }
+  }
+}
+
+void updateAndDrawFinishedParts() {
+  fill(190, 190, 200); // Cold silver color
+  for (int i = finishedParts.size() - 1; i >= 0; i--) {
+    PVector p = finishedParts.get(i);
+    p.x -= 1.0; // Conveyor moves left
+    
+    // Draw resting part
+    rect(p.x - 10, p.y - 70, 20, 140, 4);
+    rect(p.x - 25, p.y - 40, 50, 25, 3);
+    rect(p.x - 25, p.y + 20, 50, 25, 3);
+    
+    // Despawn
+    if (p.x < -50) finishedParts.remove(i);
+  }
+}
