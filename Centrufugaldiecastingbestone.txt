@@ -1,0 +1,293 @@
+// Centrifugal Casting Process (3D Animation Sequence)
+// Optimized for APDE (Processing for Android)
+
+int time = 0;
+float moldAngle = 0;
+
+void setup() {
+  // Use fullScreen(P3D) for Android, or size(800, 600, P3D) for previewing
+  size(800, 600, P3D); 
+  orientation(LANDSCAPE); // Locks screen to landscape on Android
+  noStroke();
+}
+
+void draw() {
+  background(35, 40, 45); 
+  
+  // Lighting setup for optimal 3D depth
+  lights();
+  directionalLight(255, 255, 255, -0.5, 1, -1);
+  ambientLight(100, 100, 100);
+
+  // Animation Cycle (0 to 600 frames)
+  time++;
+  if (time > 600) time = 0;
+
+  // --- STATE MACHINE LOGIC ---
+  float moldSpeed = 0;
+  float metalLen = 0;
+  
+  float moldInnerR = 68;
+  float finalThickness = 12;
+  
+  float metalOuterR = 15;
+  float metalInnerR = 0;
+  float metalY = moldInnerR - metalOuterR - 2; 
+  color mColor = color(255, 120, 0); 
+  float ejectZ = 0;
+  float dropY = 0;
+  String stepText = "";
+
+  if (time < 150) {
+    // 1. Pouring Phase
+    stepText = "1. Pouring: Molten metal enters the slow-rotating mold";
+    moldSpeed = 0.05;
+    metalLen = map(time, 0, 150, 0, 300); 
+    metalOuterR = map(time, 0, 150, 5, 25);
+    metalInnerR = 0; 
+    metalY = moldInnerR - metalOuterR;
+  } 
+  else if (time < 250) {
+    // 2. Settling Phase (Centrifugal force applies)
+    stepText = "2. Spinning: Centrifugal force drives metal to walls";
+    moldSpeed = map(time, 150, 250, 0.05, 0.45); 
+    metalLen = 300;
+    metalOuterR = map(time, 150, 250, 25, moldInnerR);
+    metalInnerR = map(time, 150, 250, 0, moldInnerR - finalThickness);
+    metalY = map(time, 150, 250, moldInnerR - 25, 0); 
+  } 
+  else if (time < 350) {
+    // 3. Cooling Phase
+    stepText = "3. Cooling: Pipe solidifies from outside in";
+    moldSpeed = map(time, 250, 350, 0.45, 0); 
+    if (moldSpeed < 0) moldSpeed = 0;
+    metalLen = 300;
+    metalOuterR = moldInnerR;
+    metalInnerR = moldInnerR - finalThickness;
+    metalY = 0;
+    
+    float t = map(time, 250, 350, 0, 1);
+    mColor = lerpColor(color(255, 120, 0), color(90, 95, 100), t);
+  } 
+  else if (time < 450) {
+    // 4. Ejection Phase
+    stepText = "4. Ejection: Finished casting is removed";
+    moldSpeed = 0;
+    metalLen = 300;
+    metalOuterR = moldInnerR;
+    metalInnerR = moldInnerR - finalThickness;
+    metalY = 0;
+    mColor = color(90, 95, 100);
+    ejectZ = map(time, 350, 450, 0, 380); 
+  } 
+  else {
+    // 5. Reset Phase
+    stepText = "5. Cycle resets for next batch";
+    moldSpeed = 0;
+    metalLen = 300;
+    metalOuterR = moldInnerR;
+    metalInnerR = moldInnerR - finalThickness;
+    metalY = 0;
+    mColor = color(90, 95, 100);
+    
+    ejectZ = (time < 550) ? map(time, 450, 550, 380, 0) : 0;
+    dropY = map(time, 450, 600, 0, 600); 
+  }
+
+  moldAngle += moldSpeed;
+
+  // --- RENDERING PIPELINE ---
+  pushMatrix();
+  // Center camera setup
+  translate(width/2, height/2 + 50, -200);
+  rotateX(-PI/8); 
+  rotateY(PI/5);  
+
+  drawMachineBase();
+
+  // MOLD AND METAL ASSEMBLY
+  pushMatrix();
+  translate(0, 0, -150); 
+
+  // Draw Dynamic 3D Labels
+  drawBillboardLabel("Water Jacket / Mold", 0, -110, 150);
+  drawBillboardLabel("Support Rollers", 0, 150, 150);
+  if (time > 350 && time < 550) {
+    drawBillboardLabel("Hydraulic Ejector", 0, -50, ejectZ - 20);
+  }
+
+  // Draw Casting / Metal
+  float partZ = (time >= 350 && time < 450) ? ejectZ : ((time >= 450) ? 380 : 0);
+  
+  if (metalLen > 0) {
+    pushMatrix();
+    translate(0, metalY + dropY, partZ);
+    drawTube(metalOuterR, metalInnerR, metalLen, mColor);
+    
+    // Label the metal/casting depending on state
+    if (time < 250) drawBillboardLabel("Molten Metal", 0, 0, 150);
+    else if (dropY < 300) drawBillboardLabel("Finished Casting", 0, 0, 150);
+    
+    popMatrix();
+  }
+
+  // Transparent Mold Chamber
+  pushMatrix();
+  rotateZ(moldAngle);
+  
+  drawTube(85, 70, 300, color(150, 200, 255, 90)); 
+  drawTube(95, 70, 20, color(100)); // Back Flange
+  pushMatrix(); translate(0, 0, 280); drawTube(95, 70, 20, color(100)); popMatrix(); // Front Flange
+  
+  // Mold Struts (visualize rotation)
+  fill(120);
+  for (int i = 0; i < 4; i++) {
+    pushMatrix();
+    rotateZ(i * HALF_PI);
+    translate(77.5, 0, 150);
+    box(10, 10, 300);
+    popMatrix();
+  }
+  popMatrix();
+
+  // Ejector Mechanism
+  if (time >= 350) {
+    pushMatrix();
+    translate(0, 0, ejectZ);
+    drawTube(68, 0, 20, color(160)); 
+    translate(0, 0, -200);
+    drawTube(15, 0, 200, color(90)); 
+    popMatrix();
+  }
+  popMatrix(); // End Mold Assembly
+
+  // Ladle / Pouring Basin
+  if (time < 150) {
+    pushMatrix();
+    translate(30, -140, 40); 
+    float tilt = map(min(time, 40), 0, 40, 0, PI/3); 
+    rotateZ(-tilt);
+    fill(90);
+    box(60, 60, 60); 
+    popMatrix();
+    
+    drawBillboardLabel("Pouring Basin", 30, -180, 40);
+
+    if (time > 15 && time < 150) {
+      pushMatrix();
+      translate(10, -110, 30);
+      rotateX(PI/5); 
+      rotateZ(PI/8);
+      drawTube(4, 0, 150, color(255, 120, 0));
+      popMatrix();
+    }
+  }
+
+  popMatrix(); // End Main Camera Matrix
+
+  // --- 2D HUD OVERLAY ---
+  hint(DISABLE_DEPTH_TEST); 
+  noLights();
+  
+  fill(255);
+  textSize(28);
+  textAlign(LEFT, TOP);
+  text("Horizontal Centrifugal Casting", 30, 30);
+  
+  textSize(22);
+  fill(150, 200, 255);
+  text(stepText, 30, 70);
+  
+  // Progress Bar
+  fill(50);
+  rect(30, 105, 300, 6, 3);
+  fill(255, 120, 0);
+  rect(30, 105, map(time, 0, 600, 0, 300), 6, 3);
+  
+  hint(ENABLE_DEPTH_TEST);
+}
+
+// Custom function to draw labels that always face the screen
+void drawBillboardLabel(String txt, float x, float y, float z) {
+  pushMatrix();
+  translate(x, y, z);
+  // Inverse of the camera rotation to face the screen
+  rotateY(-PI/5); 
+  rotateX(PI/8);
+  
+  fill(255);
+  textSize(16);
+  textAlign(CENTER, CENTER);
+  
+  // Simple text backing for readability
+  fill(0, 150);
+  float tw = textWidth(txt) + 10;
+  rect(-tw/2, -12, tw, 24, 4);
+  
+  fill(255);
+  text(txt, 0, -2);
+  popMatrix();
+}
+
+void drawTube(float rOuter, float rInner, float h, color c) {
+  fill(c);
+  int sides = 32; 
+  float angleStep = TWO_PI / sides;
+
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float a = i * angleStep;
+    vertex(cos(a) * rOuter, sin(a) * rOuter, 0);
+    vertex(cos(a) * rOuter, sin(a) * rOuter, h);
+  }
+  endShape();
+
+  if (rInner > 0) {
+    beginShape(QUAD_STRIP);
+    for (int i = 0; i <= sides; i++) {
+      float a = i * angleStep;
+      vertex(cos(a) * rInner, sin(a) * rInner, 0);
+      vertex(cos(a) * rInner, sin(a) * rInner, h);
+    }
+    endShape();
+  }
+
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float a = i * angleStep;
+    vertex(cos(a) * rOuter, sin(a) * rOuter, 0);
+    vertex(cos(a) * rInner, sin(a) * rInner, 0);
+  }
+  endShape();
+  
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float a = i * angleStep;
+    vertex(cos(a) * rOuter, sin(a) * rOuter, h);
+    vertex(cos(a) * rInner, sin(a) * rInner, h);
+  }
+  endShape();
+}
+
+void drawMachineBase() {
+  pushMatrix();
+  translate(0, 110, -50);
+  
+  fill(50, 55, 60);
+  box(240, 40, 450); 
+
+  fill(80);
+  float[] rZ = {-120, 120};
+  float[] rX = {-70, 70};
+  
+  for (int z = 0; z < 2; z++) {
+    for (int x = 0; x < 2; x++) {
+      pushMatrix();
+      translate(rX[x], -30, rZ[z]);
+      rotateZ(-moldAngle * 1.5); 
+      drawTube(22, 0, 40, color(70)); 
+      popMatrix();
+    }
+  }
+  popMatrix();
+}
