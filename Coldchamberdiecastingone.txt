@@ -1,0 +1,217 @@
+// Continuous Cold Chamber Die Casting Animation
+// Designed for APDE (Processing for Android) / Processing 3+
+
+int time = 0;
+float plungerX = 680;
+float dieOffset = 0;
+float partY = 250;
+float partX = 320;
+boolean partVisible = false;
+color partColor;
+float ejectorPinExt = 0;
+float metalHeight = 0;
+
+// List to hold finished parts moving on the conveyor
+ArrayList<PVector> finishedParts = new ArrayList<PVector>();
+
+void setup() {
+  size(800, 600); // Standard landscape canvas
+  noStroke();
+}
+
+void draw() {
+  background(40, 45, 50); // Industrial dark factory background
+  
+  // Advance animation timer (Cycles every 400 frames)
+  time++;
+  if (time > 400) {
+    time = 0;
+    // Add the fallen part to the conveyor belt list
+    finishedParts.add(new PVector(partX, 510)); 
+    partVisible = false;
+  }
+  
+  // --- STATE MACHINE LOGIC ---
+  if (time < 60) {
+    // 1. Ladle pours molten metal into the shot sleeve
+    plungerX = 680;
+    metalHeight = map(time, 0, 60, 0, 38);
+    partVisible = false;
+    dieOffset = 0;
+    ejectorPinExt = 0;
+    partY = 250;
+  } 
+  else if (time < 120) {
+    // 2. Plunger shoots left, pushing metal into the closed mold
+    plungerX = map(time, 60, 120, 680, 445);
+    partVisible = true;
+    partColor = color(255, 120, 0); // Glowing liquid orange
+    partX = 320; // Centered in the closed die
+  } 
+  else if (time < 180) {
+    // 3. Part and biscuit cool in the closed mold
+    float t = map(time, 120, 180, 0, 1);
+    // Interpolate from Hot Orange to Cold Silver
+    partColor = lerpColor(color(255, 120, 0), color(190, 190, 200), t);
+  } 
+  else if (time < 240) {
+    // 4. Movable die opens (slides to the LEFT), pulling the part out
+    dieOffset = map(time, 180, 240, 0, 150);
+    partX = 320 - dieOffset; 
+  }
+  else if (time < 280) {
+    // 5. Ejector pins (in movable die) push part out to the RIGHT
+    ejectorPinExt = map(time, 240, 280, 0, 45);
+    partX = (320 - dieOffset) + ejectorPinExt;
+  }
+  else if (time < 340) {
+    // 6. Part falls down to the conveyor
+    ejectorPinExt = map(time, 280, 340, 45, 0); // Pins snap back
+    partY = map(time, 280, 340, 250, 510);      // Part drops
+  } 
+  else if (time <= 400) {
+    // 7. Plunger retracts, die slams shut to restart cycle
+    dieOffset = map(time, 340, 400, 150, 0);
+    plungerX = map(time, 340, 400, 445, 680);
+  }
+
+  // --- RENDERING PIPELINE ---
+  drawConveyor();
+  drawDieAssembly();
+  drawShotSleeve();
+  drawMoltenPool();
+  drawPlunger();
+  drawLadle();
+  drawActivePart();
+  updateAndDrawFinishedParts();
+}
+
+void drawShotSleeve() {
+  fill(120, 125, 130);
+  
+  // Top wall of the cylinder (with a gap for the pour hole)
+  rect(430, 230, 170, 10); // Left of pour hole
+  rect(640, 230, 110, 10); // Right of pour hole
+  
+  // Bottom wall of the cylinder
+  rect(430, 280, 320, 10);
+}
+
+void drawMoltenPool() {
+  // Draw the liquid metal inside the sleeve during pouring and injection
+  if (time < 120 && plungerX > 445) {
+    fill(255, 120, 0); // Hot orange
+    // Pool width shrinks as the plunger pushes it left
+    rect(430, 280 - metalHeight, plungerX - 430, metalHeight);
+  }
+}
+
+void drawPlunger() {
+  // Piston Head (Blocks the metal)
+  fill(50, 100, 150); 
+  rect(plungerX, 240, 20, 40, 2);
+  
+  // Hydraulic Shaft (Pushes the head)
+  fill(150, 160, 170);
+  rect(plungerX + 20, 255, 800 - (plungerX + 20), 10);
+}
+
+void drawDieAssembly() {
+  // Fixed Die (Right side, attached to the shot sleeve)
+  fill(150, 155, 160);
+  rect(350, 100, 80, 300, 5);
+  
+  // Movable Die (Left side, slides away)
+  fill(140, 145, 150);
+  rect(270 - dieOffset, 100, 80, 300, 5);
+  
+  // Die Cavity & Runner Details (Dark hollow cutouts when empty)
+  fill(30, 35, 40); 
+  if (dieOffset > 0) {
+    // Movable side cavity
+    rect(320 - dieOffset, 200, 30, 100);
+    // Fixed side cavity and runner connecting to sleeve
+    rect(350, 200, 10, 100); 
+    rect(350, 240, 80, 40);
+  }
+  
+  // Ejector Pins (Built into movable die)
+  stroke(200);
+  strokeWeight(6);
+  line(150 - dieOffset, 220, 320 - dieOffset + ejectorPinExt, 220);
+  line(150 - dieOffset, 280, 320 - dieOffset + ejectorPinExt, 280);
+  noStroke();
+}
+
+void drawActivePart() {
+  if (partVisible) {
+    fill(partColor);
+    
+    // Main part body
+    rect(partX, partY - 50, 20, 100, 4); 
+    
+    // Runner (connects part to the sleeve)
+    rect(partX + 20, partY - 10, 90, 20);  
+    
+    // Biscuit (the excess plug of metal left at the tip of the plunger)
+    rect(partX + 110, partY - 20, 15, 40, 2);  
+  }
+}
+
+void drawLadle() {
+  if (time < 70) {
+    pushMatrix();
+    // Anchor rotation point above the pour hole
+    translate(620, 150); 
+    
+    // Rotate ladle to simulate pouring
+    float angle = map(min(time, 40), 0, 40, 0, -PI/2.5);
+    rotate(angle);
+    
+    // Ladle Cup
+    fill(100);
+    arc(0, 0, 60, 60, 0, PI);
+    
+    // Ladle Handle
+    fill(80);
+    rect(30, -5, 120, 10);
+    popMatrix();
+    
+    // Molten stream dropping into the hole
+    if (time > 15 && time < 60) {
+      fill(255, 120, 0);
+      rect(610, 150, 15, 80); 
+    }
+  }
+}
+
+void drawConveyor() {
+  // Heavy-duty industrial conveyor belt (Bottom Center)
+  fill(70);
+  rect(50, 550, 450, 40, 15);
+  
+  // Animate conveyor rollers
+  fill(110);
+  for (int i = 0; i <= 11; i++) {
+    float xPos = 70 + (i * 40) - (frameCount % 40);
+    if (xPos > 50 && xPos < 490) {
+      ellipse(xPos, 570, 22, 22);
+    }
+  }
+}
+
+void updateAndDrawFinishedParts() {
+  fill(190, 190, 200); // Cold silver color
+  for (int i = finishedParts.size() - 1; i >= 0; i--) {
+    PVector p = finishedParts.get(i);
+    p.x -= 1.0; // Conveyor moves left
+    
+    // Draw resting part with its runner and biscuit
+    rect(p.x, p.y - 50, 20, 100, 4);
+    rect(p.x + 20, p.y - 10, 90, 20);
+    rect(p.x + 110, p.y - 20, 15, 40, 2);
+    
+    // Despawn when off the belt
+    if (p.x < -150) finishedParts.remove(i);
+  }
+}
