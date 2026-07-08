@@ -1,0 +1,330 @@
+// Curved Continuous Casting Process (Interactive 3D Animation)
+// Designed for APDE (Processing for Android) / Processing 3+
+
+int time = 0;
+
+// Camera interaction variables
+float rotX = -0.15;
+float rotY = -0.65;
+float zoom = 1.0;
+
+void setup() {
+  size(800, 700, P3D); // P3D required for 3D rendering
+  noStroke();
+}
+
+void draw() {
+  background(30, 35, 40); 
+  
+  // Lighting (Crucial for seeing the cylinders spin)
+  lights();
+  directionalLight(255, 240, 220, -1, 1, -1);
+  ambientLight(90, 90, 100);
+
+  // Advance animation timer (600 frame seamless cycle)
+  time++;
+  if (time >= 600) time = 0;
+
+  // --- STATE MACHINE LOGIC ---
+  float torchY = -30;
+  float slabX = 0;
+  float slabDropY = 0;
+  boolean cutting = false;
+  float strandGrowth = 0;
+  
+  // Seamless loop logic
+  if (time < 250) {
+    // 1. Feeding phase: Strand grows horizontally
+    strandGrowth = map(time, 0, 250, 0, 120);
+    slabX = 300; // Previous slab is off screen
+  } 
+  else if (time < 300) {
+    // 2. Cutting phase: Torch engages, strand pauses growth
+    strandGrowth = 120;
+    torchY = map(time, 250, 300, -30, 20); // Torch moves down
+    cutting = true;
+  } 
+  else if (time < 350) {
+    // 3. Dropping phase: Cut slab falls to conveyor, torch retracts
+    strandGrowth = 120;
+    torchY = map(time, 300, 350, 20, -30); // Torch moves up
+    slabDropY = map(time, 300, 350, 0, 15); // Slab drops
+    slabX = 0; // Starts at cut point
+  } 
+  else {
+    // 4. Conveying phase: Slab moves away, new strand regrows
+    strandGrowth = map(time, 350, 600, 0, 120); // Regrow behind slab
+    slabDropY = 15;
+    slabX = map(time, 350, 600, 0, 280); // Move away
+    torchY = -30;
+  }
+
+  // --- RENDERING PIPELINE ---
+  pushMatrix();
+  // Center the camera and apply interactive rotations
+  translate(width / 2, height / 2 - 50, 0);
+  scale(zoom);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // Shift entire machine up to fit on screen
+  translate(-100, -250, 0);
+
+  // Track coordinates for dynamic text labels
+  PVector pLadle = new PVector();
+  PVector pTundish = new PVector();
+  PVector pMold = new PVector();
+  PVector pTorch = new PVector();
+  PVector pConveyor = new PVector();
+
+  // 1. Ladle (Top)
+  pushMatrix();
+  pLadle.set(modelX(0, 0, 50), modelY(0, 0, 50), modelZ(0, 0, 50));
+  fill(80);
+  drawCylinder(55, 45, 80); // Ladle shell
+  translate(0, -38, 0);
+  fill(255, 120, 0); // Molten steel
+  drawCylinder(51, 51, 2);
+  popMatrix();
+
+  // Molten stream: Ladle -> Tundish
+  fill(255, 150, 0);
+  pushMatrix(); translate(0, 50, 0); drawCylinder(8, 8, 50); popMatrix();
+
+  // 2. Tundish
+  pushMatrix();
+  translate(50, 100, 0);
+  pTundish.set(modelX(0, 0, 40), modelY(0, 0, 40), modelZ(0, 0, 40));
+  fill(90);
+  box(150, 45, 70); // Tundish shell
+  translate(0, -20, 0);
+  fill(255, 150, 0);
+  box(140, 2, 60); // Tundish metal pool
+  popMatrix();
+
+  // Submerged Entry Nozzle (SEN)
+  pushMatrix(); translate(100, 135, 0); fill(150); drawCylinder(10, 10, 35); popMatrix();
+
+  // 3. Water-Cooled Mold
+  pushMatrix();
+  translate(100, 175, 0);
+  pMold.set(modelX(0, 0, 35), modelY(0, 0, 35), modelZ(0, 0, 35));
+  fill(60, 70, 80); box(40, 70, 40); // Mold Core
+  popMatrix();
+
+  // 4. The Curved Strand & Rotating Support Rollers
+  float curveRadius = 160;
+  float strandThick = 20;
+  float strandWide = 30;
+  int segments = 20;
+  float rollSpeed = time * 0.1;
+  
+  pushMatrix();
+  translate(100, 210, 0); // Start curve at bottom of mold
+  
+  for(int i = 0; i <= segments; i++) {
+    float theta = map(i, 0, segments, 0, HALF_PI); 
+    float cx = curveRadius - curveRadius * cos(theta);
+    float cy = curveRadius * sin(theta);
+    
+    // Gradient from molten core to solidifying shell
+    float t = (float)i / segments;
+    color strandColor = lerpColor(color(255, 120, 0), color(200, 60, 40), t);
+    
+    pushMatrix();
+    translate(cx, cy, 0);
+    rotateZ(-theta); // Tangent to curve (aligns local Y along strand)
+    
+    // Draw Strand Segment
+    fill(strandColor);
+    box(strandThick, (curveRadius * HALF_PI)/segments + 2, strandWide);
+    
+    // Draw True-Rolling Support Cylinders (Inner and Outer radius)
+    fill(100, 110, 120);
+    if(i % 2 == 0) { 
+      // Inner roller
+      pushMatrix(); 
+      translate(-strandThick/2 - 8, 0, 0); // Move to inner edge
+      rotateX(HALF_PI); // Lay cylinder flat across the Z-axis
+      rotateY(-rollSpeed); // Spin around its own center axis!
+      drawCylinder(8, 8, 50); 
+      popMatrix();
+      
+      // Outer roller
+      pushMatrix(); 
+      translate(strandThick/2 + 8, 0, 0); // Move to outer edge
+      rotateX(HALF_PI); 
+      rotateY(rollSpeed); 
+      drawCylinder(8, 8, 50); 
+      popMatrix();
+    }
+    popMatrix();
+  }
+  
+  // 5. Horizontal Straight Section
+  translate(curveRadius, curveRadius, 0); // Move to bottom end of curve
+  
+  // Straight section horizontal rollers
+  fill(100, 110, 120);
+  for(int j = 0; j < 4; j++) {
+    pushMatrix(); 
+    translate(j * 30 + 15, strandThick/2 + 8, 0); // Position under strand
+    rotateX(HALF_PI); // Align across Z
+    rotateY(-rollSpeed); // Spin axis
+    drawCylinder(8, 8, 50); 
+    popMatrix();
+  }
+
+  // Draw feeding continuous horizontal strand
+  if (strandGrowth > 0) {
+    fill(200, 60, 40);
+    pushMatrix();
+    translate(strandGrowth/2, 0, 0);
+    box(strandGrowth, strandThick, strandWide);
+    popMatrix();
+  }
+  
+  // 6. Torch Cutoff Point
+  pushMatrix();
+  translate(130, torchY, 0); // Fixed X position where cutting happens
+  pTorch.set(modelX(0, -20, 0), modelY(0, -20, 0), modelZ(0, -20, 0));
+  fill(160);
+  box(15, 40, 15); // Torch body
+  if (cutting) {
+    fill(100, 200, 255); // Blue plasma flame
+    translate(0, 25, 0);
+    box(4, 20, 4);
+  }
+  popMatrix();
+
+  // 7. Conveyor Belt Rollers (To collect cut slab)
+  pConveyor.set(modelX(200, 30, 25), modelY(200, 30, 25), modelZ(200, 30, 25));
+  fill(70, 80, 90);
+  for(int k = 0; k < 6; k++) {
+    pushMatrix();
+    translate(140 + k*35, strandThick/2 + 23, 0); // Lowered slightly to catch drop
+    rotateX(HALF_PI);
+    // Conveyor rollers spin fast only when a slab is moving on them
+    if (time > 350) rotateY(-time * 0.2); 
+    drawCylinder(10, 10, 60);
+    popMatrix();
+  }
+
+  // 8. Cut Solid Slab (Moves along spinning conveyor)
+  if (time >= 300) {
+    pushMatrix();
+    translate(130 + (120/2) + slabX, slabDropY, 0);
+    fill(140, 50, 40); // Cooler, darker solid steel
+    box(120, strandThick, strandWide);
+    popMatrix();
+  }
+  
+  popMatrix(); // End curved section translation
+  popMatrix(); // End Main Camera Matrix
+
+  // --- 2D HUD AND DYNAMIC LABELS ---
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  
+  // Background pane
+  fill(20, 210);
+  rect(10, 10, 380, 110, 5);
+  
+  fill(255);
+  textSize(22);
+  textAlign(LEFT, BASELINE);
+  text("Curved Continuous Casting", 25, 40);
+  
+  textSize(14);
+  fill(150, 200, 255);
+  text("Drag screen to rotate 3D view | Cycle: 600 frames", 25, 70);
+  
+  // Progress Bar for Full Cycle
+  fill(50); rect(25, 85, 330, 5, 2);
+  fill(255, 120, 0); rect(25, 85, map(time, 0, 600, 0, 330), 5, 2);
+
+  // Draw Smart 3D-to-2D Labels
+  strokeWeight(1.5);
+  textSize(14);
+  drawDynamicLabel("1. Ladle", pLadle, -100, -20);
+  drawDynamicLabel("2. Tundish", pTundish, 100, -30);
+  drawDynamicLabel("3. Mold", pMold, -100, 10);
+  drawDynamicLabel("4. Torch Cutoff", pTorch, -80, -60);
+  drawDynamicLabel("Roller Conveyor", pConveyor, 80, 40);
+
+  hint(ENABLE_DEPTH_TEST);
+}
+
+// Allows user to drag to rotate the 3D view
+void mouseDragged() {
+  rotY += (mouseX - pmouseX) * 0.01;
+  rotX -= (mouseY - pmouseY) * 0.01;
+}
+
+// Calculates 2D screen positions for 3D points and draws anchored labels
+void drawDynamicLabel(String txt, PVector target3D, float xOffset, float yOffset) {
+  float sx = screenX(target3D.x, target3D.y, target3D.z);
+  float sy = screenY(target3D.x, target3D.y, target3D.z);
+  
+  float lx = sx + xOffset;
+  float ly = sy + yOffset;
+  
+  stroke(255, 150);
+  line(sx, sy, lx, ly); 
+  
+  noStroke();
+  fill(255);
+  
+  if (xOffset < 0) {
+    textAlign(RIGHT, CENTER);
+    text(txt, lx - 8, ly);
+  } else {
+    textAlign(LEFT, CENTER);
+    text(txt, lx + 8, ly);
+  }
+}
+
+// Custom 3D Cylinder primitive function
+// Using 12 sides creates clear polygonal faces, allowing you to visibly see the rolling rotation under the lighting
+void drawCylinder(float topRadius, float bottomRadius, float tall) {
+  int sides = 12; 
+  float angle = 0;
+  float angleIncrement = TWO_PI / sides;
+  
+  pushMatrix();
+  translate(0, -tall/2, 0);
+
+  // Tube body
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i < sides + 1; ++i) {
+    vertex(topRadius * cos(angle), 0, topRadius * sin(angle));
+    vertex(bottomRadius * cos(angle), tall, bottomRadius * sin(angle));
+    angle += angleIncrement;
+  }
+  endShape();
+  
+  // Top Cap
+  if (topRadius > 0) {
+    angle = 0;
+    beginShape(TRIANGLE_FAN);
+    vertex(0, 0, 0);
+    for (int i = 0; i < sides + 1; i++) {
+      vertex(topRadius * cos(angle), 0, topRadius * sin(angle));
+      angle += angleIncrement;
+    }
+    endShape();
+  }
+  
+  // Bottom Cap
+  if (bottomRadius > 0) {
+    angle = 0;
+    beginShape(TRIANGLE_FAN);
+    vertex(0, tall, 0);
+    for (int i = 0; i < sides + 1; i++) {
+      vertex(bottomRadius * cos(angle), tall, bottomRadius * sin(angle));
+      angle += angleIncrement;
+    }
+    endShape();
+  }
+  popMatrix();
+}
