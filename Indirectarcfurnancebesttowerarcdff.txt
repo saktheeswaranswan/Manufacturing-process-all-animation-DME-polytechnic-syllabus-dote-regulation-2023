@@ -1,0 +1,390 @@
+// Interactive Indirect Arc Furnace 3D Simulation for APDE
+// Tap "Next Step" to progress. Use Slider for transparency. Drag screen to rotate.
+
+int currentState = 0;
+String[] stateDescriptions = {
+  "Step 1: CHARGING\nIron (black), Coke (grey), & Flux (white blocks) fall and settle.",
+  "Step 2: ARC IGNITION\nElectrodes close. A thunderous arc ignites ABOVE the charge.",
+  "Step 3: SLOW MELTING & ROCKING\nSolids melt. Thick yellow slag accumulates on orange metal.",
+  "Step 4: SLAG POURING\nFurnace tilts slightly to tap off the thick yellow slag.",
+  "Step 5: METAL TAPPING\nFurnace tilts fully to pour the molten iron. Process End."
+};
+
+// Camera variables
+float cameraRotX = PI/8;
+float cameraRotY = -PI/6;
+
+// Animation & State variables
+float animTimer = 0;
+float currentGap = 45; // Distance between electrodes
+float meltProgress = 0; // 0.0 (solid) to 1.0 (fully liquid)
+float slagLevel = 1.0;  // Volume of slag remaining (1.0 to 0.0)
+float metalLevel = 1.0; // Volume of metal remaining (1.0 to 0.0)
+float tiltAngle = 0;    // Current dynamic tilt of the furnace
+
+// Slider variables
+float sliderX, sliderY, sliderWidth;
+float sliderValue = 0.35; // Initial transparency
+boolean draggingSlider = false;
+
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  noStroke();
+  textAlign(CENTER, CENTER);
+  
+  // Initialize slider position (top right corner)
+  sliderWidth = 250;
+  sliderX = width - sliderWidth - 50;
+  sliderY = 50;
+}
+
+void draw() {
+  background(15, 20, 25); // Dark background enhances the arc and molten glow
+  
+  animTimer += 0.02; // Advance global animation time
+  
+  // ==============================
+  // 1. ANIMATION DYNAMICS & LOGIC
+  // ==============================
+  
+  // Electrode Gap Dynamics (Snaps shut in step 1/2, opens otherwise)
+  float targetGap = (currentState == 1 || currentState == 2) ? 14 : 45;
+  currentGap = lerp(currentGap, targetGap, 0.1);
+  
+  // Melting Dynamics (Gradually turns solids to liquids in Step 2)
+  if (currentState == 2) {
+    meltProgress = min(1.0, meltProgress + 0.0025); // Slow, deliberate melt
+  } else if (currentState < 2) {
+    meltProgress = 0;
+  }
+  
+  // Pouring Dynamics (Slag drains in Step 3, Metal in Step 4)
+  if (currentState == 3 && slagLevel > 0) slagLevel -= 0.006;
+  if (currentState == 4 && metalLevel > 0) metalLevel -= 0.006;
+  
+  // Furnace Tilt Dynamics (Smooth lerping between angles)
+  float targetTilt = 0;
+  if (currentState == 2) {
+    targetTilt = sin(animTimer * 2.5) * (PI / 12); // Smooth rocking motion
+  } else if (currentState == 3) {
+    targetTilt = PI / 4.5; // Partial tilt for slag
+  } else if (currentState == 4) {
+    targetTilt = PI / 2.1; // Steep tilt for metal tapping
+  }
+  tiltAngle = lerp(tiltAngle, targetTilt, 0.05); // Smoothly animate to target tilt
+  
+  // ==============================
+  // 2. RENDER 3D SCENE
+  // ==============================
+  pushMatrix();
+  lights();
+  directionalLight(255, 255, 255, 0, 1, -1);
+  ambientLight(100, 100, 100);
+  
+  // Center camera
+  translate(width / 2, height / 2 + 50, -350);
+  rotateX(cameraRotX);
+  rotateY(cameraRotY);
+  
+  drawBase();
+  
+  // Draw the tilting furnace assembly
+  pushMatrix();
+  translate(0, -100, 0);
+  rotateX(tiltAngle);
+  drawFurnaceShell();
+  drawInside();
+  popMatrix();
+  
+  drawElectrodes();
+  drawAccessories();
+  
+  popMatrix();
+  
+  // ==============================
+  // 3. RENDER 2D HUD (UI)
+  // ==============================
+  hint(DISABLE_DEPTH_TEST);
+  
+  // Top Text Background
+  fill(0, 180);
+  rect(0, 0, width, 120);
+  
+  // State Description
+  fill(255);
+  textSize(22);
+  text(stateDescriptions[currentState], width / 2 - 150, 60);
+  
+  // Draw Transparency Slider
+  drawSlider();
+  
+  // "Next Step" Button
+  fill(40, 140, 220);
+  rect(width - 240, height - 100, 200, 70, 10);
+  fill(255);
+  textSize(28);
+  text("Next Step", width - 140, height - 65);
+  
+  hint(ENABLE_DEPTH_TEST);
+}
+
+// ==============================
+// INTERACTION LOGIC
+// ==============================
+void mousePressed() {
+  // Check Next Step button
+  if (mouseX > width - 240 && mouseX < width - 40 && mouseY > height - 100 && mouseY < height - 30) {
+    currentState++;
+    if (currentState > 4) {
+      // Complete reset for looping
+      currentState = 0;
+      meltProgress = 0;
+      slagLevel = 1.0;
+      metalLevel = 1.0;
+    }
+    animTimer = 0;
+    return;
+  }
+  
+  // Check Slider grab
+  if (mouseX >= sliderX - 20 && mouseX <= sliderX + sliderWidth + 20 && mouseY >= sliderY - 20 && mouseY <= sliderY + 20) {
+    draggingSlider = true;
+    updateSlider(mouseX);
+    return;
+  }
+}
+
+void mouseDragged() {
+  if (draggingSlider) {
+    updateSlider(mouseX);
+  } else if (!(mouseX > width - 240 && mouseY > height - 100)) {
+    // Rotate camera if not touching UI
+    cameraRotY += (mouseX - pmouseX) * 0.01;
+    cameraRotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+void mouseReleased() {
+  draggingSlider = false;
+}
+
+void updateSlider(float mx) {
+  sliderValue = constrain(map(mx, sliderX, sliderX + sliderWidth, 0, 1), 0, 1);
+}
+
+void drawSlider() {
+  stroke(100);
+  strokeWeight(4);
+  line(sliderX, sliderY, sliderX + sliderWidth, sliderY);
+  noStroke();
+  
+  float thumbX = sliderX + sliderValue * sliderWidth;
+  fill(200, 220, 255);
+  ellipse(thumbX, sliderY, 30, 30);
+  
+  fill(255);
+  textSize(18);
+  text("Chamber Opacity", sliderX + sliderWidth / 2, sliderY - 25);
+}
+
+// ==============================
+// 3D DRAWING FUNCTIONS
+// ==============================
+void drawBase() {
+  fill(80); 
+  pushMatrix(); translate(-120, 50, 0); box(40, 150, 100); popMatrix();
+  pushMatrix(); translate(120, 50, 0); box(40, 150, 100); popMatrix();
+}
+
+void drawFurnaceShell() {
+  float shellAlpha = map(sliderValue, 0, 1, 15, 255); 
+  
+  fill(160, 175, 190, shellAlpha); 
+  pushMatrix();
+  rotateY(PI/2);
+  drawCylinder(80, 200); // Main cylindrical body
+  popMatrix();
+  
+  // Copper tracking rings for rollers
+  fill(190, 110, 50, shellAlpha + 50);
+  pushMatrix(); translate(-80, 0, 0); rotateY(PI/2); drawCylinder(85, 10); popMatrix();
+  pushMatrix(); translate(80, 0, 0); rotateY(PI/2); drawCylinder(85, 10); popMatrix();
+}
+
+void drawInside() {
+  pushMatrix();
+  
+  // --- 1. CHARGE & MOLTEN POOL ACCUMULATION ---
+  pushMatrix();
+  translate(0, 45, 0); // Positioned at the bottom of the refractory shell
+  
+  // Draw Solid Charge (Shrinks dynamically as meltProgress increases)
+  if (meltProgress < 1.0 && (currentState <= 2)) {
+    randomSeed(12345); // Ensures particles stay in the exact same spot every frame
+    for(int i = 0; i < 45; i++) {
+      float targetY = random(-5, 15);
+      float currentY = targetY;
+      
+      // Falling physics in State 0
+      if (currentState == 0) {
+        float startY = -150 - (i * 10); // Start high up in the bucket
+        float dropProgress = constrain(animTimer * 3.0 - (i * 0.1), 0, 1);
+        float bounce = sin(dropProgress * PI) * (1.0 - dropProgress) * 12; // Bounce effect
+        currentY = lerp(startY, targetY, dropProgress) - bounce;
+      }
+      
+      pushMatrix();
+      translate(random(-35, 35), currentY - 10, random(-20, 20));
+      
+      // Scale down to simulate melting
+      scale(1.0 - meltProgress); 
+      
+      int type = i % 3;
+      if (type == 0) {
+        fill(25); // Iron (Black Sphere)
+        sphere(5);
+      } else if (type == 1) {
+        fill(245); // Flux (White Block)
+        box(8);
+      } else {
+        fill(85); // Coke (Grey Sphere)
+        sphere(5);
+      }
+      popMatrix();
+    }
+  }
+  
+  // Accumulating Molten Pools (Grows dynamically as meltProgress increases)
+  if (meltProgress > 0) {
+    // Metal Pool (Orange, fills from the bottom up)
+    float maxMetalHeight = 16;
+    float currentMetalH = maxMetalHeight * meltProgress * metalLevel;
+    
+    if (currentMetalH > 0) {
+      fill(255, 120, 0);
+      emissive(180, 50, 0);
+      pushMatrix();
+      translate(0, 10 - (currentMetalH / 2), 0); // Anchored to bottom, expands upward
+      box(90, currentMetalH, 50);
+      popMatrix();
+      emissive(0);
+    }
+    
+    // Slag Pool (Thick Yellow, floats exactly on top of the orange metal)
+    float maxSlagHeight = 8;
+    float currentSlagH = maxSlagHeight * meltProgress * slagLevel;
+    
+    if (currentSlagH > 0) {
+      fill(230, 210, 40); // Thick Yellow Slag
+      pushMatrix();
+      translate(0, 10 - currentMetalH - (currentSlagH / 2), 0); // Stacks precisely on metal
+      box(85, currentSlagH, 48);
+      popMatrix();
+    }
+  }
+  popMatrix();
+  
+  // --- 2. THUNDER BALL ELECTRIC ARC ---
+  // Ignite arc if electrodes are close (gap <= 15) and we are in ignition/melting
+  if (currentGap <= 15 && (currentState == 1 || currentState == 2)) {
+    pushMatrix();
+    translate(0, -5, 0); // Positioned safely above the charge (Indirect heating)
+    
+    // Intense, erratic pulsing size
+    float pulse = 22 + random(-3, 4);
+    
+    // Outer glowing energy ball
+    fill(255, 255, 200, 180);
+    emissive(255, 255, 200); 
+    sphere(pulse);
+    
+    // Inner blinding hot core
+    fill(255);
+    emissive(255);
+    sphere(pulse * 0.4);
+    
+    // Jagged "Thunder" lightning strikes inside and around the ball
+    stroke(180, 230, 255);
+    strokeWeight(3);
+    for(int i = 0; i < 8; i++) {
+      float x1 = random(-18, 18);
+      float y1 = random(-12, 12);
+      float z1 = random(-12, 12);
+      float x2 = random(-18, 18);
+      float y2 = random(-12, 12);
+      float z2 = random(-12, 12);
+      line(x1, y1, z1, x2, y2, z2);
+    }
+    noStroke();
+    emissive(0);
+    popMatrix();
+  }
+  
+  popMatrix();
+}
+
+void drawElectrodes() {
+  fill(45); // Graphite rods
+  pushMatrix(); translate(-150 + currentGap, -100, 0); rotateY(PI/2); drawCylinder(5, 150); popMatrix();
+  pushMatrix(); translate(150 - currentGap, -100, 0); rotateY(PI/2); drawCylinder(5, 150); popMatrix();
+}
+
+void drawAccessories() {
+  // Charging Bucket
+  if (currentState == 0) {
+    pushMatrix(); 
+    translate(0, -250, 0); 
+    fill(50, 90, 130); 
+    rotateX(PI/2); 
+    drawCylinder(40, 60); 
+    popMatrix();
+  }
+  
+  // Slag Ladle (Positioned closer to catch the first tilt)
+  pushMatrix(); translate(0, 100, 100); fill(90, 100, 110); rotateX(PI/2); drawCylinder(30, 40); popMatrix();
+  
+  // Metal Crucible (Positioned further out to catch the steep tilt)
+  pushMatrix(); translate(0, 100, 200); fill(40, 45, 55); rotateX(PI/2); drawCylinder(35, 60); popMatrix();
+  
+  // Dynamic Pouring Streams
+  if (currentState == 3 && slagLevel > 0) {
+    // Slag pour (Thick Yellow stream)
+    fill(230, 210, 40);
+    pushMatrix(); translate(0, -20, 100); rotateX(PI/2); drawCylinder(4, 150); popMatrix();
+  } 
+  else if (currentState == 4 && metalLevel > 0) {
+    // Metal pour (Glowing Orange stream)
+    fill(255, 120, 0); emissive(200, 80, 0);
+    pushMatrix(); translate(0, -20, 200); rotateX(PI/2); drawCylinder(6, 150); popMatrix();
+    emissive(0);
+  }
+}
+
+// ==============================
+// CUSTOM 3D CYLINDER PRIMITIVE
+// ==============================
+void drawCylinder(float r, float h) {
+  int sides = 30;
+  float angle = TWO_PI / sides;
+  
+  // Cylinder sides
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(i * angle) * r; float y = sin(i * angle) * r;
+    vertex(x, y, -h/2); vertex(x, y, h/2);
+  }
+  endShape();
+  
+  // Top cap
+  beginShape(TRIANGLE_FAN);
+  vertex(0, 0, -h/2);
+  for (int i = 0; i <= sides; i++) vertex(cos(i * angle) * r, sin(i * angle) * r, -h/2);
+  endShape();
+  
+  // Bottom cap
+  beginShape(TRIANGLE_FAN);
+  vertex(0, 0, h/2);
+  for (int i = 0; i <= sides; i++) vertex(cos(i * angle) * r, sin(i * angle) * r, h/2);
+  endShape();
+}
