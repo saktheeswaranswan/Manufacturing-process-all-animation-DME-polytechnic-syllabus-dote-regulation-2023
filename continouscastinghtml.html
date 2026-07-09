@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curved Continuous Casting 3D</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1e2328;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: sans-serif;
+        }
+        canvas {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+
+<script>
+// Curved Continuous Casting Process (Interactive 3D Animation)
+// Translated from APDE/Processing to Web-Native HTML5/p5.js
+
+let time = 0;
+
+// Camera interaction variables
+let rotX = -0.15;
+let rotY = -0.65;
+let zoom = 1.0;
+
+function setup() {
+  createCanvas(800, 700, WEBGL); // WEBGL required for 3D rendering
+  noStroke();
+  textFont('sans-serif'); // Set a fallback font for WebGL text rendering
+}
+
+function draw() {
+  background(30, 35, 40); 
+  
+  // Lighting
+  lights();
+  directionalLight(255, 240, 220, -1, 1, -1);
+  ambientLight(90, 90, 100);
+
+  // Advance animation timer (600 frame seamless cycle)
+  time++;
+  if (time >= 600) time = 0;
+
+  // --- STATE MACHINE LOGIC ---
+  let torchY = -30;
+  let slabX = 0;
+  let slabDropY = 0;
+  let cutting = false;
+  let strandGrowth = 0;
+  
+  // Seamless loop logic
+  if (time < 250) {
+    strandGrowth = map(time, 0, 250, 0, 120);
+    slabX = 300; 
+  } 
+  else if (time < 300) {
+    strandGrowth = 120;
+    torchY = map(time, 250, 300, -30, 20); 
+    cutting = true;
+  } 
+  else if (time < 350) {
+    strandGrowth = 120;
+    torchY = map(time, 300, 350, 20, -30); 
+    slabDropY = map(time, 300, 350, 0, 15); 
+    slabX = 0; 
+  } 
+  else {
+    strandGrowth = map(time, 350, 600, 0, 120); 
+    slabDropY = 15;
+    slabX = map(time, 350, 600, 0, 280); 
+    torchY = -30;
+  }
+
+  // --- RENDERING PIPELINE ---
+  push();
+  // WebGL origin is at the center by default, so we only need a minor Y adjustment
+  translate(0, -50, 0);
+  scale(zoom);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // Shift entire machine up to fit on screen
+  translate(-100, -250, 0);
+
+  // 1. Ladle (Top)
+  push();
+  drawBillboardLabel("1. Ladle", 0, 0, 50, -100, -20);
+  fill(80);
+  drawCylinder(55, 45, 80); // Ladle shell
+  translate(0, -38, 0);
+  fill(255, 120, 0); // Molten steel
+  drawCylinder(51, 51, 2);
+  pop();
+
+  // Molten stream: Ladle -> Tundish
+  fill(255, 150, 0);
+  push(); translate(0, 50, 0); drawCylinder(8, 8, 50); pop();
+
+  // 2. Tundish
+  push();
+  translate(50, 100, 0);
+  drawBillboardLabel("2. Tundish", 0, 0, 40, 100, -30);
+  fill(90);
+  box(150, 45, 70); // Tundish shell
+  translate(0, -20, 0);
+  fill(255, 150, 0);
+  box(140, 2, 60); // Tundish metal pool
+  pop();
+
+  // Submerged Entry Nozzle (SEN)
+  push(); translate(100, 135, 0); fill(150); drawCylinder(10, 10, 35); pop();
+
+  // 3. Water-Cooled Mold
+  push();
+  translate(100, 175, 0);
+  drawBillboardLabel("3. Mold", 0, 0, 35, -100, 10);
+  fill(60, 70, 80); box(40, 70, 40); // Mold Core
+  pop();
+
+  // 4. The Curved Strand & Rotating Support Rollers
+  let curveRadius = 160;
+  let strandThick = 20;
+  let strandWide = 30;
+  let segments = 20;
+  let rollSpeed = time * 0.1;
+  
+  push();
+  translate(100, 210, 0); 
+  
+  for(let i = 0; i <= segments; i++) {
+    let theta = map(i, 0, segments, 0, HALF_PI); 
+    let cx = curveRadius - curveRadius * cos(theta);
+    let cy = curveRadius * sin(theta);
+    
+    // Gradient from molten core to solidifying shell
+    let t = i / segments;
+    let c1 = color(255, 120, 0);
+    let c2 = color(200, 60, 40);
+    let strandColor = lerpColor(c1, c2, t);
+    
+    push();
+    translate(cx, cy, 0);
+    rotateZ(-theta); 
+    
+    // Draw Strand Segment
+    fill(strandColor);
+    box(strandThick, (curveRadius * HALF_PI)/segments + 2, strandWide);
+    
+    // Draw True-Rolling Support Cylinders
+    fill(100, 110, 120);
+    if(i % 2 === 0) { 
+      // Inner roller
+      push(); 
+      translate(-strandThick/2 - 8, 0, 0); 
+      rotateX(HALF_PI); 
+      rotateY(-rollSpeed); 
+      drawCylinder(8, 8, 50); 
+      pop();
+      
+      // Outer roller
+      push(); 
+      translate(strandThick/2 + 8, 0, 0); 
+      rotateX(HALF_PI); 
+      rotateY(rollSpeed); 
+      drawCylinder(8, 8, 50); 
+      pop();
+    }
+    pop();
+  }
+  
+  // 5. Horizontal Straight Section
+  translate(curveRadius, curveRadius, 0); 
+  
+  // Straight section horizontal rollers
+  fill(100, 110, 120);
+  for(let j = 0; j < 4; j++) {
+    push(); 
+    translate(j * 30 + 15, strandThick/2 + 8, 0); 
+    rotateX(HALF_PI); 
+    rotateY(-rollSpeed); 
+    drawCylinder(8, 8, 50); 
+    pop();
+  }
+
+  // Draw feeding continuous horizontal strand
+  if (strandGrowth > 0) {
+    fill(200, 60, 40);
+    push();
+    translate(strandGrowth/2, 0, 0);
+    box(strandGrowth, strandThick, strandWide);
+    pop();
+  }
+  
+  // 6. Torch Cutoff Point
+  push();
+  translate(130, torchY, 0); 
+  drawBillboardLabel("4. Torch Cutoff", 0, -20, 0, -80, -60);
+  fill(160);
+  box(15, 40, 15); // Torch body
+  if (cutting) {
+    fill(100, 200, 255); // Blue plasma flame
+    translate(0, 25, 0);
+    box(4, 20, 4);
+  }
+  pop();
+
+  // 7. Conveyor Belt Rollers
+  drawBillboardLabel("Roller Conveyor", 140, strandThick/2 + 23, 25, 80, 40);
+  fill(70, 80, 90);
+  for(let k = 0; k < 6; k++) {
+    push();
+    translate(140 + k*35, strandThick/2 + 23, 0);
+    rotateX(HALF_PI);
+    if (time > 350) rotateY(-time * 0.2); 
+    drawCylinder(10, 10, 60);
+    pop();
+  }
+
+  // 8. Cut Solid Slab
+  if (time >= 300) {
+    push();
+    translate(130 + (120/2) + slabX, slabDropY, 0);
+    fill(140, 50, 40); 
+    box(120, strandThick, strandWide);
+    pop();
+  }
+  
+  pop(); // End curved section translation
+  pop(); // End Main Camera Matrix
+
+  // --- 2D HUD OVERLAY IN WEBGL ---
+  push();
+  // Reset camera and matrices for purely 2D flat drawing over the 3D scene
+  camera(0, 0, (height/2.0) / tan(PI*30.0 / 180.0), 0, 0, 0, 0, 1, 0);
+  resetMatrix();
+  drawingContext.disable(drawingContext.DEPTH_TEST);
+  noLights();
+  
+  // Adjust origin to top-left for standard 2D positioning
+  translate(-width/2, -height/2);
+  
+  // Background pane
+  fill(20, 210);
+  rect(10, 10, 380, 110, 5);
+  
+  fill(255);
+  textSize(22);
+  textAlign(LEFT, BASELINE);
+  text("Curved Continuous Casting", 25, 40);
+  
+  textSize(14);
+  fill(150, 200, 255);
+  text("Drag screen to rotate 3D view | Cycle: 600 frames", 25, 70);
+  
+  // Progress Bar for Full Cycle
+  fill(50); rect(25, 85, 330, 5, 2);
+  fill(255, 120, 0); rect(25, 85, map(time, 0, 600, 0, 330), 5, 2);
+
+  drawingContext.enable(drawingContext.DEPTH_TEST);
+  pop();
+}
+
+// Allows user to drag to rotate the 3D view
+function mouseDragged() {
+  rotY += (mouseX - pmouseX) * 0.01;
+  rotX -= (mouseY - pmouseY) * 0.01;
+}
+
+// 3D Billboard Label System
+// Draws an anchored line and text that un-rotates to always face the camera
+function drawBillboardLabel(txt, ox, oy, oz, offsetX, offsetY) {
+  push();
+  translate(ox, oy, oz); // Anchor point on the model
+  
+  stroke(255, 150);
+  strokeWeight(1.5);
+  line(0, 0, 0, offsetX, offsetY, 0); // Draw pointer line
+  
+  translate(offsetX, offsetY, 0); // Move to end of pointer line
+  
+  // Counter-rotate against the global camera so text is flat to the screen
+  rotateY(-rotY);
+  rotateX(-rotX);
+  
+  noStroke();
+  fill(255);
+  textSize(14);
+  
+  if (offsetX < 0) {
+    textAlign(RIGHT, CENTER);
+    text(txt, -8, 0);
+  } else {
+    textAlign(LEFT, CENTER);
+    text(txt, 8, 0);
+  }
+  pop();
+}
+
+// Custom 3D Cylinder primitive function utilizing QUAD_STRIP
+function drawCylinder(topRadius, bottomRadius, tall) {
+  let sides = 12; 
+  let angle = 0;
+  let angleIncrement = TWO_PI / sides;
+  
+  push();
+  translate(0, -tall/2, 0);
+
+  // Tube body
+  beginShape(QUAD_STRIP);
+  for (let i = 0; i < sides + 1; ++i) {
+    vertex(topRadius * cos(angle), 0, topRadius * sin(angle));
+    vertex(bottomRadius * cos(angle), tall, bottomRadius * sin(angle));
+    angle += angleIncrement;
+  }
+  endShape();
+  
+  // Top Cap
+  if (topRadius > 0) {
+    angle = 0;
+    beginShape(TRIANGLE_FAN);
+    vertex(0, 0, 0);
+    for (let i = 0; i < sides + 1; i++) {
+      vertex(topRadius * cos(angle), 0, topRadius * sin(angle));
+      angle += angleIncrement;
+    }
+    endShape();
+  }
+  
+  // Bottom Cap
+  if (bottomRadius > 0) {
+    angle = 0;
+    beginShape(TRIANGLE_FAN);
+    vertex(0, tall, 0);
+    for (let i = 0; i < sides + 1; i++) {
+      vertex(bottomRadius * cos(angle), tall, bottomRadius * sin(angle));
+      angle += angleIncrement;
+    }
+    endShape();
+  }
+  pop();
+}
+</script>
+</body>
+</html>
