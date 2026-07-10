@@ -1,1 +1,395 @@
+// Continuous Hot Chamber Die Casting Animation (3D Interactive)
+// Designed for Processing / APDE (Android)
+// Features: Interactive Drag, 3D Gooseneck, MPTC Part, Transparent Furnace
+
+float plungerY = 0;       
+float minPlunger = -90;   // Top (open) position, allows metal to enter port
+float maxPlunger = 60;    // Bottom (injected) position
+boolean isDragging = false;
+
+// State Machine Variables
+// 0: Idle/Manual Drag, 1: Injecting/Cooling, 2: Opening Die
+// 3: Ejecting, 4: Falling, 5: Resetting Die
+int state = 0; 
+int timer = 0;
+
+float dieOffset = 0; // Moves the movable die
+float partDropY = 0; // Y position of the falling part
+color partColor;
+boolean partVisible = false;
+float fillProgress = 0.0; // Animates the metal filling the MPTC die
+
+// Store finished MPTC parts on the conveyor
+ArrayList<PVector> finishedParts = new ArrayList<PVector>();
+
+PFont font;
+
+void setup() {
+  size(900, 600, P3D); // Hardware 3D acceleration
+  orientation(LANDSCAPE);
+  smooth(8);
+  
+  // Font for the "MPTC" mold cavity
+  font = createFont("SansSerif-Bold", 40);
+  textFont(font);
+  textAlign(CENTER, CENTER);
+  
+  // Set initial plunger position
+  plungerY = minPlunger;
+}
+
+void draw() {
+  background(35, 40, 50); // Industrial factory background
+  
+  // 3D Lighting Setup
+  ambientLight(110, 110, 115);
+  directionalLight(255, 255, 255, 0.5, 1, -0.5);
+  pointLight(255, 120, 40, 150, 150, 50); // Glow from the burner/metal
+  
+  // Position camera for an isometric 3D view
+  pushMatrix();
+  translate(width / 2 + 50, height / 2 - 50, -200);
+  rotateX(-PI / 6);
+  rotateY(PI / 5);
+  
+  updateLogic();
+  
+  // --- RENDERING PIPELINE ---
+  // In 3D, solid objects must be drawn first, transparent objects LAST.
+  
+  // 1. Draw Solid Objects
+  drawConveyor();
+  drawDies();
+  if (partVisible) {
+    drawActivePart();
+  }
+  drawFinishedParts();
+  
+  drawCrucibleAndMetal();
+  drawGooseneck();
+  drawPlunger();
+  drawBurner(); 
+  
+  // 2. Draw Transparent Objects (The Outer Heating Chamber)
+  drawFurnaceShell(); 
+  
+  popMatrix();
+  
+  // --- 2D OVERLAY UI ---
+  hint(DISABLE_DEPTH_TEST);
+  fill(255);
+  textSize(20);
+  textAlign(LEFT, TOP);
+  if (state == 0) {
+    fill(100, 255, 100);
+    text("Status: DRAG PLUNGER DOWN TO INJECT", 20, 20);
+  } else if (state == 1) {
+    fill(255, 150, 50);
+    if (timer < 25) text("Status: INJECTING MOLTEN METAL...", 20, 20);
+    else text("Status: COOLING MPTC PART...", 20, 20);
+  } else if (state > 1 && state < 5) {
+    fill(200, 200, 255);
+    text("Status: EJECTING PART", 20, 20);
+  } else if (state == 5) {
+    fill(255, 100, 100);
+    text("Status: DRAG PLUNGER UP TO RESET", 20, 20);
+  }
+  hint(ENABLE_DEPTH_TEST);
+}
+
+// --- INTERACTION & STATE MACHINE LOGIC ---
+void updateLogic() {
+  if (state == 0) {
+    partVisible = false;
+    fillProgress = 0;
+    // Trigger injection when pulled all the way down
+    if (plungerY >= maxPlunger - 2) {
+      plungerY = maxPlunger;
+      state = 1;
+      timer = 0;
+      partVisible = true;
+      partDropY = -50;
+      dieOffset = 0;
+    }
+  } 
+  else if (state == 1) {
+    timer++;
+    // Animate the metal filling the die text
+    if (timer <= 25) {
+      fillProgress = map(timer, 0, 25, 0, 1);
+      partColor = color(255, 90, 0); // Hot glowing orange
+    } else {
+      fillProgress = 1.0;
+      // Cool down color shift
+      float t = constrain(map(timer, 25, 90, 0, 1), 0, 1);
+      partColor = lerpColor(color(255, 90, 0), color(170, 180, 190), t); 
+    }
+    
+    if (timer > 90) {
+      state = 2; // Open Die
+      timer = 0;
+    }
+  } 
+  else if (state == 2) {
+    dieOffset += 3;
+    if (dieOffset > 100) {
+      state = 3; // Eject
+      timer = 0;
+    }
+  } 
+  else if (state == 3) {
+    partDropY += 9; // Gravity
+    if (partDropY > 190) { 
+      finishedParts.add(new PVector(-200 - dieOffset, 190, 20));
+      partVisible = false;
+      state = 4;
+      timer = 0;
+    }
+  } 
+  else if (state == 4) {
+    timer++;
+    if (timer > 20) state = 5; // Reset Die
+  }
+  else if (state == 5) {
+    dieOffset -= 3;
+    if (dieOffset <= 0) {
+      dieOffset = 0;
+      // User must drag plunger back up to uncover the port and finish reset
+      if (plungerY <= minPlunger + 5) {
+         state = 0; 
+      }
+    }
+  }
+}
+
+// Map screen drag to 3D Plunger Y movement
+void mousePressed() {
+  if (mouseX > width / 2) isDragging = true;
+}
+
+void mouseDragged() {
+  if (isDragging && (state == 0 || state == 5)) {
+    float targetY = map(mouseY, 150, 450, minPlunger, maxPlunger);
+    plungerY = constrain(targetY, minPlunger, maxPlunger);
+  }
+}
+
+void mouseReleased() {
+  isDragging = false;
+}
+
+// --- 3D RENDERING FUNCTIONS ---
+
+void drawCrucibleAndMetal() {
+  pushMatrix();
+  translate(140, 100, 0); 
+  
+  // Inner Crucible (Solid metal pot holding the liquid)
+  fill(60, 65, 70);
+  box(130, 90, 130);
+  
+  // Molten Metal Pool
+  // Drawn slightly higher than the crucible base to look like liquid inside
+  translate(0, -10, 0);
+  fill(255, 80, 0, 230); // Translucent burning orange
+  box(115, 80, 115);
+  
+  popMatrix();
+}
+
+void drawGooseneck() {
+  pushMatrix();
+  // We place the gooseneck so it is submerged in the crucible pool
+  translate(160, 60, 0);
+  
+  fill(85, 90, 95);
+  
+  // 1. Vertical Plunger Chamber (Submerged)
+  drawCylinder(22, 140);
+  
+  // 2. Intake Port Hole representation (Dark spot on the cylinder)
+  pushMatrix();
+  translate(-22, -20, 0);
+  fill(30); // Dark hole
+  if (plungerY < -20) fill(255, 100, 0); // Filled with glowing metal if plunger is up
+  box(10, 20, 20);
+  popMatrix();
+  
+  // 3. Angled Neck leading to the Die
+  fill(85, 90, 95);
+  translate(-70, -60, 0);
+  rotateZ(PI / 2.5); // Angle upwards and left towards the dies
+  drawCylinder(16, 150);
+  
+  popMatrix();
+}
+
+void drawPlunger() {
+  pushMatrix();
+  translate(160, 60 + plungerY, 0); // Aligned with the vertical gooseneck
+  
+  // Hydraulic Shaft
+  fill(210, 215, 220); // Shiny steel
+  translate(0, -90, 0);
+  drawCylinder(7, 180);
+  
+  // Piston Head (Blocks port and pushes metal)
+  fill(45, 45, 50);
+  translate(0, 90, 0);
+  drawCylinder(20, 45);
+  
+  popMatrix();
+}
+
+void drawBurner() {
+  pushMatrix();
+  translate(140, 180, 0); // Positioned under the crucible
+  
+  // Burner Pipe/Block
+  fill(50);
+  box(70, 20, 20); 
+  
+  // Animated 3D Fire particles
+  translate(0, -15, 0);
+  noStroke();
+  fill(40, 130, 255, 200); // Blue core
+  sphere(22 + sin(frameCount * 0.2) * 4);
+  
+  fill(255, 140, 0, 210); // Flickering orange tip
+  translate(0, -12, 0);
+  sphere(18 + cos(frameCount * 0.35) * 5);
+  popMatrix();
+}
+
+void drawFurnaceShell() {
+  pushMatrix();
+  translate(140, 120, 0); 
+  
+  // Transparent Heating Chamber
+  fill(180, 70, 50, 40); // Brick color with heavy transparency (Alpha 40)
+  stroke(255, 100);      // White wireframe overlay to show edges clearly
+  strokeWeight(2);
+  box(190, 180, 190);
+  noStroke();
+  
+  popMatrix();
+}
+
+void drawDies() {
+  pushMatrix();
+  translate(-100, -50, 0); 
+  
+  // Fixed Die (Right side, receives metal from gooseneck)
+  fill(130, 135, 140);
+  pushMatrix();
+  translate(40, 0, 0);
+  box(70, 160, 140);
+  popMatrix();
+  
+  // Movable Die (Left side, slides on injection finish)
+  fill(110, 115, 120);
+  pushMatrix();
+  translate(-40 - dieOffset, 0, 0);
+  box(70, 160, 140);
+  popMatrix();
+  
+  popMatrix();
+}
+
+void drawActivePart() {
+  pushMatrix();
+  // Part is embedded in the movable die, so it slides with it
+  float currentX = -100 - (state >= 2 ? dieOffset : 0);
+  translate(currentX, partDropY, 20); 
+  
+  fill(partColor);
+  
+  // 3D Extrusion length logic (grows as metal is injected)
+  int maxDepth = 18;
+  int currentDepth = max(1, int(maxDepth * fillProgress));
+  
+  draw3DText("MPTC", currentDepth); 
+  popMatrix();
+}
+
+void drawConveyor() {
+  pushMatrix();
+  translate(-250, 230, 0); // Position far left, under dies
+  
+  // Main Conveyor Frame
+  fill(50, 50, 50);
+  box(380, 25, 130);
+  
+  // Animated rollers
+  fill(160);
+  float rollOffset = (frameCount * 3.0) % 45;
+  for (int x = -180; x <= 180; x += 45) {
+    pushMatrix();
+    translate(x - rollOffset, 15, 70);
+    rotateX(PI/2);
+    drawCylinder(12, 140);
+    popMatrix();
+  }
+  popMatrix();
+}
+
+void drawFinishedParts() {
+  for (int i = finishedParts.size() - 1; i >= 0; i--) {
+    PVector p = finishedParts.get(i);
+    p.x -= 3.0; // Conveyor speed
+    
+    pushMatrix();
+    translate(p.x, p.y, p.z);
+    rotateX(-PI/2); // Rest flat on belt
+    fill(170, 180, 190); // Solid cooled silver
+    draw3DText("MPTC", 18);
+    popMatrix();
+    
+    // Despawn
+    if (p.x < -450) finishedParts.remove(i);
+  }
+}
+
+// --- HELPER FUNCTIONS FOR 3D GEOMETRY ---
+
+void drawCylinder(float r, float h) {
+  int sides = 18;
+  float angle = 360.0 / sides;
+  
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(radians(i * angle)) * r;
+    float z = sin(radians(i * angle)) * r;
+    vertex(x, -h/2, z);
+    vertex(x, h/2, z);
+  }
+  endShape();
+  
+  // Top and Bottom Caps
+  beginShape(TRIANGLE_FAN);
+  vertex(0, -h/2, 0);
+  for (int i = 0; i <= sides; i++) {
+    vertex(cos(radians(i * angle)) * r, -h/2, sin(radians(i * angle)) * r);
+  }
+  endShape();
+  
+  beginShape(TRIANGLE_FAN);
+  vertex(0, h/2, 0);
+  for (int i = 0; i <= sides; i++) {
+    vertex(cos(radians(i * angle)) * r, h/2, sin(radians(i * angle)) * r);
+  }
+  endShape();
+}
+
+// Creates 3D text by drawing multiple 2D text layers along the Z-axis
+void draw3DText(String t, int depth) {
+  pushMatrix();
+  for (int z = -depth / 2; z <= depth / 2; z++) {
+    pushMatrix();
+    translate(0, 0, z);
+    text(t, 0, 0);
+    popMatrix();
+  }
+  popMatrix();
+}
 
