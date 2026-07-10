@@ -1,0 +1,463 @@
+// 3D Cold Chamber Die Casting Simulator
+// Features: OOP, Accurate Fill Volume Physics, Custom Text, 3D Camera Controls
+// Designed for APDE (Processing for Android)
+
+CastingSimulator simulator;
+
+// --- 3D CAMERA VARIABLES ---
+boolean cameraMode = false; // Toggle between INTERACT and CAMERA
+float camRotX = PI / 5;
+float camRotY = -PI / 6;
+float camZoom = 1.0;
+float camPanX = 50;
+float camPanY = -50;
+
+void setup() {
+  fullScreen(P3D);
+  orientation(LANDSCAPE);
+  noStroke();
+  simulator = new CastingSimulator();
+}
+
+void draw() {
+  background(30, 35, 40);
+  
+  // Setup 3D Lighting
+  ambientLight(110, 110, 110);
+  directionalLight(255, 255, 255, -0.5, 1, -0.5);
+  pointLight(255, 200, 150, 0, -200, 200);
+  
+  // Run Simulator Logic & Rendering
+  simulator.update();
+  simulator.display();
+  
+  // Draw 2D UI Overlay (Camera controls & status)
+  drawHUD();
+}
+
+// --- TOUCH & INPUT HANDLING ---
+
+void mousePressed() {
+  // Check if UI Mode Toggle Button is clicked (Top Right)
+  if (mouseX > width - 160 && mouseX < width - 10 && mouseY > 10 && mouseY < 60) {
+    cameraMode = !cameraMode;
+    return;
+  }
+  
+  // Check Camera Control Buttons
+  if (cameraMode) {
+    if (mouseX > width - 160 && mouseX < width - 10) {
+      if (mouseY > 70 && mouseY < 120) camZoom += 0.2; // ZOOM IN
+      if (mouseY > 130 && mouseY < 180) camZoom -= 0.2; // ZOOM OUT
+      if (mouseY > 190 && mouseY < 240) { // RESET CAM
+        camRotX = PI / 5;
+        camRotY = -PI / 6;
+        camZoom = 1.0;
+      }
+    }
+  }
+}
+
+void mouseDragged() {
+  if (cameraMode) {
+    // Prevent rotating if dragging over the UI buttons
+    if (mouseX < width - 180) {
+      camRotY += (mouseX - pmouseX) * 0.01;
+      camRotX -= (mouseY - pmouseY) * 0.01;
+    }
+  } else {
+    // Only interact with machine if NOT in camera mode
+    simulator.handleDrag(mouseX, pmouseX, mouseY, pmouseY);
+  }
+}
+
+void mouseReleased() {
+  if (!cameraMode) {
+    simulator.handleRelease();
+  }
+}
+
+// --- 2D UI OVERLAY ---
+
+void drawHUD() {
+  hint(DISABLE_DEPTH_TEST);
+  camera(); // Reset to 2D orthogonal view
+  
+  // Draw Status Text (Top Center)
+  fill(255);
+  textSize(height / 20);
+  textAlign(CENTER, TOP);
+  
+  if (cameraMode) {
+    fill(0, 200, 255);
+    text("CAMERA MODE: DRAG TO ROTATE", width/2, 20);
+  } else {
+    if (simulator.state == 0) {
+      text("DRAG DOWN TO POUR MOLTEN METAL", width/2, 20);
+      fill(255, 150, 0);
+      text("Metal Level: " + int(simulator.metalLevel * 100) + "%", width/2, 70);
+    } else if (simulator.state == 1) {
+      text("DRAG LEFT TO INJECT", width/2, 20);
+      fill(0, 255, 100);
+      text("Pressure: " + int(map(simulator.plunger.x, 300, 20, 0, 100)) + "%", width/2, 70);
+    } else {
+      fill(255, 150, 0);
+      text("AUTOMATED EXTRACTION CYCLE...", width/2, 20);
+    }
+  }
+  
+  // Draw UI Panel (Top Right)
+  textSize(height / 25);
+  textAlign(CENTER, CENTER);
+  
+  // Mode Toggle Button
+  fill(cameraMode ? color(0, 150, 255) : color(100));
+  rect(width - 160, 10, 150, 50, 5);
+  fill(255);
+  text(cameraMode ? "CAM: ON" : "CAM: OFF", width - 85, 30);
+  
+  // Camera Tools (Only show if Camera Mode is ON)
+  if (cameraMode) {
+    fill(80);
+    rect(width - 160, 70, 150, 50, 5);
+    fill(255); text("ZOOM +", width - 85, 90);
+    
+    fill(80);
+    rect(width - 160, 130, 150, 50, 5);
+    fill(255); text("ZOOM -", width - 85, 150);
+    
+    fill(150, 50, 50);
+    rect(width - 160, 190, 150, 50, 5);
+    fill(255); text("RESET", width - 85, 210);
+  }
+  
+  hint(ENABLE_DEPTH_TEST);
+}
+
+
+// ==========================================
+// SYSTEM ORCHESTRATOR CLASS
+// ==========================================
+class CastingSimulator {
+  int state; 
+  Ladle ladle;
+  Plunger plunger;
+  DieAssembly die;
+  Conveyor conveyor;
+  float metalLevel = 0;
+  
+  CastingSimulator() {
+    state = 0;
+    ladle = new Ladle();
+    plunger = new Plunger();
+    die = new DieAssembly();
+    conveyor = new Conveyor();
+  }
+  
+  void update() {
+    conveyor.update();
+    
+    if (state == 2) { 
+      die.offset += 4;
+      if (die.offset >= 120) state = 3;
+    } 
+    else if (state == 3) { 
+      die.partY += 8;
+      if (die.partY >= 180) {
+        conveyor.addPart(new Part(-60, 180, 0));
+        die.partY = 0;
+        state = 4;
+      }
+    } 
+    else if (state == 4) { 
+      die.offset -= 4;
+      plunger.x += 10;
+      ladle.angle -= 0.05;
+      
+      if (die.offset <= 0) die.offset = 0;
+      if (plunger.x >= 300) plunger.x = 300;
+      if (ladle.angle <= 0) ladle.angle = 0;
+      
+      if (die.offset == 0 && plunger.x == 300 && ladle.angle == 0) {
+        metalLevel = 0;
+        state = 0; 
+      }
+    }
+  }
+  
+  void display() {
+    pushMatrix();
+    
+    // Apply User Camera Transformations
+    translate(width / 2 + camPanX, height / 2 + camPanY, -300);
+    scale(camZoom);
+    rotateX(camRotX);
+    rotateY(camRotY);
+    
+    // Draw Opaque Components First
+    conveyor.display();
+    plunger.display();
+    die.display(state, plunger.x, metalLevel);
+    ladle.display(state);
+    
+    // Draw Transparent Shot Sleeve LAST to avoid 3D occlusion bugs
+    fill(160, 180, 200, 60); 
+    drawCylinderX(0, 350, 30, 24);
+    
+    popMatrix();
+  }
+  
+  void handleDrag(float mx, float pmx, float my, float pmy) {
+    if (state == 0) {
+      float dragDist = (my - pmy) * 0.01;
+      ladle.angle += dragDist;
+      ladle.angle = constrain(ladle.angle, 0, PI / 2.5);
+      metalLevel = map(ladle.angle, 0, PI / 2.5, 0, 1.0);
+    } 
+    else if (state == 1) {
+      plunger.x += (mx - pmx) * 0.8;
+      // Stop at x=20 to leave the metal "biscuit"
+      plunger.x = constrain(plunger.x, 20, 300); 
+    }
+  }
+  
+  void handleRelease() {
+    if (state == 0 && ladle.angle >= PI / 2.6) {
+      state = 1; 
+    } 
+    // Trigger ejection cycle when pushed in fully
+    else if (state == 1 && plunger.x < 25) {
+      state = 2; 
+    }
+  }
+}
+
+// ==========================================
+// COMPONENT CLASSES
+// ==========================================
+
+class Ladle {
+  float angle = 0;
+  
+  void display(int state) {
+    pushMatrix();
+    translate(250, -40, 0); 
+    rotateZ(angle); 
+    
+    fill(100);
+    pushMatrix();
+    translate(60, -80, 0);
+    rotateZ(PI/4);
+    box(10, 120, 10);
+    popMatrix();
+    
+    fill(130);
+    sphereDetail(15);
+    pushMatrix();
+    translate(0, -20, 0);
+    scale(1, 0.5, 1);
+    sphere(35);
+    popMatrix();
+    
+    if (angle > 0.2 && state == 0) {
+      fill(255, 120, 0); 
+      pushMatrix();
+      rotateZ(-angle); 
+      drawCylinderY(-20, 40, 6 * (angle / (PI/2.5)), 12);
+      popMatrix();
+    }
+    popMatrix();
+  }
+}
+
+class Plunger {
+  float x = 300;
+  
+  void display() {
+    fill(70, 75, 80);
+    drawCylinderX(x, x + 25, 29, 24);
+    fill(120, 125, 130);
+    drawCylinderX(x + 25, 500, 12, 16);
+  }
+}
+
+class DieAssembly {
+  float offset = 0;
+  float partY = 0;
+  
+  void display(int state, float plungerX, float metalLvl) {
+    // Fixed Die Half
+    pushMatrix();
+    translate(-30, 0, 0);
+    fill(120, 125, 135, 180);
+    box(60, 160, 160);
+    popMatrix();
+    
+    // Movable Die Half
+    pushMatrix();
+    translate(-90 - offset, 0, 0);
+    fill(110, 115, 125, 180);
+    box(60, 160, 160);
+    popMatrix();
+    
+    // --- ACCURATE METAL FILL PHYSICS ---
+    
+    float pouredLength = map(metalLvl, 0, 1, 0, 250); 
+    float currentSleeveMetalEnd = pouredLength;
+    
+    // As plunger pushes, the length of the metal in the sleeve shrinks
+    if (plungerX < pouredLength) {
+      currentSleeveMetalEnd = plungerX;
+    }
+    
+    // 1. Draw Liquid in Shot Sleeve
+    if (metalLvl > 0 && state <= 1) {
+      fill(255, 120, 0, 240);
+      if (currentSleeveMetalEnd > 0) {
+        drawCylinderX(0, currentSleeveMetalEnd, 28, 24);
+      }
+    }
+
+    // Calculate how much volume was pushed out of the sleeve
+    float transferredMetal = pouredLength - currentSleeveMetalEnd;
+    float fillRatio = 0;
+    if (pouredLength > 20) { 
+      // Normalizes to 1.0 when plunger hits its max stroke (x=20)
+      fillRatio = constrain(transferredMetal / (pouredLength - 20), 0, 1);
+    }
+    
+    // 2. Draw Metal filling the cavity
+    if (state == 1 && fillRatio > 0) {
+      pushMatrix();
+      translate(-60, 0, 0);
+      fill(255, 120, 0); 
+      box(40, 80 * fillRatio, 80 * fillRatio); // Cavity expanding
+      drawCylinderX(20, 60, 10, 12);           // Runner filling
+      popMatrix();
+    } 
+    // 3. Draw Completed Solidified Ejected Part
+    else if (state > 1) {
+      pushMatrix();
+      translate(-60, partY, 0);
+      
+      // Cools from orange to silver as it falls
+      float coolLerp = partY / 180.0;
+      fill(lerpColor(color(255, 120, 0), color(180, 180, 190), coolLerp));
+      
+      box(40, 80, 80);               // Main Cast Body
+      drawCylinderX(20, 60, 10, 12); // Solidified Runner
+      drawCylinderX(60, 80, 28, 24); // Biscuit (Residual plug)
+      
+      // Cast Lettering
+      pushMatrix();
+      translate(20.5, 0, 0); 
+      rotateY(HALF_PI); 
+      fill(30); 
+      textSize(10);
+      textAlign(CENTER, CENTER);
+      text("MAHARAJA\nPOLYTECHNIC", 0, 0);
+      popMatrix();
+      
+      popMatrix();
+    }
+  }
+}
+
+class Conveyor {
+  ArrayList<Part> parts = new ArrayList<Part>();
+  
+  void addPart(Part p) { parts.add(p); }
+  
+  void update() {
+    for (int i = parts.size() - 1; i >= 0; i--) {
+      Part p = parts.get(i);
+      p.x -= 2.0; 
+      if (p.x < -400) parts.remove(i);
+    }
+  }
+  
+  void display() {
+    pushMatrix();
+    translate(-150, 210, 0);
+    fill(50, 55, 60);
+    box(500, 20, 150); 
+    fill(90);
+    for(int i = -200; i <= 200; i += 50) {
+      drawCylinderZ(i, 0, -80, 80, 12, 12);
+    }
+    popMatrix();
+    
+    for (Part p : parts) p.display();
+  }
+}
+
+class Part {
+  float x, y, z;
+  Part(float px, float py, float pz) { x = px; y = py; z = pz; }
+  
+  void display() {
+    pushMatrix();
+    translate(x, y - 40, z);
+    fill(180, 180, 190);
+    
+    box(40, 80, 80);               // Main Cast Body
+    drawCylinderX(20, 60, 10, 12); // Solidified Runner
+    drawCylinderX(60, 80, 28, 24); // Biscuit (Residual plug)
+    
+    pushMatrix();
+    translate(20.5, 0, 0);
+    rotateY(HALF_PI);
+    fill(50);
+    textSize(10);
+    textAlign(CENTER, CENTER);
+    text("MAHARAJA\nPOLYTECHNIC", 0, 0);
+    popMatrix();
+    
+    popMatrix();
+  }
+}
+
+// ==========================================
+// 3D PRIMITIVE UTILITIES (Global Scope)
+// ==========================================
+
+void drawCylinderX(float x1, float x2, float r, int sides) {
+  float angle = TWO_PI / sides;
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float y = cos(i * angle) * r;
+    float z = sin(i * angle) * r;
+    vertex(x1, y, z);
+    vertex(x2, y, z);
+  }
+  endShape();
+  beginShape(TRIANGLE_FAN); vertex(x1,0,0); for(int i=0; i<=sides; i++) vertex(x1, cos(i*angle)*r, sin(i*angle)*r); endShape();
+  beginShape(TRIANGLE_FAN); vertex(x2,0,0); for(int i=0; i<=sides; i++) vertex(x2, cos(i*angle)*r, sin(i*angle)*r); endShape();
+}
+
+void drawCylinderY(float y1, float y2, float r, int sides) {
+  float angle = TWO_PI / sides;
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(i * angle) * r;
+    float z = sin(i * angle) * r;
+    vertex(x, y1, z);
+    vertex(x, y2, z);
+  }
+  endShape();
+}
+
+void drawCylinderZ(float px, float py, float z1, float z2, float r, int sides) {
+  float angle = TWO_PI / sides;
+  pushMatrix();
+  translate(px, py, 0);
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(i * angle) * r;
+    float y = sin(i * angle) * r;
+    vertex(x, y, z1);
+    vertex(x, y, z2);
+  }
+  endShape();
+  popMatrix();
+}
