@@ -1,0 +1,504 @@
+// Shell pattern 
+
+
+// ================================================================
+// SHELL PIECE PATTERN - 3D SAND CASTING SIMULATION
+// COMPLETE APDE / PROCESSING ANDROID P3D SOURCE CODE
+//
+// Demonstrates placing a split shell pattern (drag half), ramming 
+// sand, and extracting it to leave a perfect 3D hollow mold cavity.
+//
+// TOUCH INSTRUCTIONS:
+// Drag screen = rotate 3D model
+// Next Step = advance animation
+// ================================================================
+
+int state = 0;
+
+final int SETUP          = 0;
+final int PLACE_PATTERN  = 1;
+final int RAM_SAND       = 2;
+final int EXTRACT        = 3;
+final int FINAL_VIEW     = 4;
+
+// ================================================================
+// CAMERA & INTERACTION
+// ================================================================
+float rotX = -PI / 5.0;
+float rotY = PI / 4.0;
+float targetRotX = -PI / 5.0;
+float cameraZ = -600;
+
+float btnW = 320;
+float btnH = 60;
+
+// ================================================================
+// ANIMATION & GEOMETRY VARIABLES
+// ================================================================
+// Dimensions of the Elbow Shell Pattern
+float R = 70;         // Bend radius
+float rOut = 30;      // Outer tube radius
+float rIn = 24;       // Inner tube radius (creates the thin 6mm shell)
+float flangeR = 40;   // Flange outer radius
+float flangeW = 12;   // Flange width/thickness
+
+// Position offsets to center it in the flask
+float cx = -35; 
+float cz = -35;
+
+float patternX = cx - 200;
+float targetPatternX = cx - 200;
+float patternY = -150;
+float targetPatternY = -150;
+float patternZ = cz;
+float targetPatternZ = cz;
+
+// Flask & Sand Dimensions
+float FLASK_W = 280;
+float FLASK_L = 280;
+float FLASK_H = 80;
+
+float sandY = FLASK_H;
+float targetSandY = FLASK_H;
+
+// ================================================================
+// COLOURS
+// ================================================================
+int colorPattern, colorPatternIn, colorFlask, colorSand, colorCavity, colorBoard;
+
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  smooth(4);
+
+  colorPattern   = color(230, 140, 20);   // Bright orange shell
+  colorPatternIn = color(200, 110, 10);   // Darker orange for inner hollow shell
+  colorFlask     = color(100, 150, 190);  // Light blue metal flask
+  colorSand      = color(60, 60, 65);     // Dark grey moulding sand
+  colorCavity    = color(35, 35, 40);     // Darker shadow for the deep cavity inside
+  colorBoard     = color(160, 90, 40);    // Wooden base board
+}
+
+void draw() {
+  background(230, 240, 245);
+
+  updateAnimations();
+
+  // --- 3D SCENE SETUP ---
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(120, 120, 125);
+  directionalLight(255, 245, 230, -0.5, 1.2, -0.8); // Strong angled light for depth
+
+  pushMatrix();
+  translate(width / 2, height / 2 + 50, cameraZ);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  drawBoard();
+  drawFlask();
+  
+  if (state >= RAM_SAND) {
+    drawSand();
+  }
+
+  // Draw Shell Pattern (moves dynamically)
+  pushMatrix();
+  translate(patternX, patternY, patternZ);
+  drawElbowPattern();
+  popMatrix();
+
+  popMatrix();
+
+  // --- 2D UI OVERLAY ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  drawUI();
+}
+
+void updateAnimations() {
+  patternX = lerp(patternX, targetPatternX, 0.1);
+  patternY = lerp(patternY, targetPatternY, 0.1);
+  patternZ = lerp(patternZ, targetPatternZ, 0.1);
+  sandY = lerp(sandY, targetSandY, 0.08);
+  rotX = lerp(rotX, targetRotX, 0.05);
+}
+
+// ================================================================
+// 3D MODEL RENDERING METHODS
+// ================================================================
+
+void drawBoard() {
+  fill(colorBoard);
+  stroke(100, 50, 20);
+  strokeWeight(2);
+  pushMatrix();
+  translate(0, FLASK_H + 8, 0);
+  box(FLASK_W + 80, 16, FLASK_L + 80);
+  popMatrix();
+}
+
+void drawFlask() {
+  fill(colorFlask);
+  stroke(50, 80, 110);
+  strokeWeight(1);
+  float t = 12; // Wall thickness
+
+  pushMatrix();
+  translate(0, FLASK_H / 2.0, 0);
+  
+  // 4 Walls
+  pushMatrix(); translate(-FLASK_W/2 - t/2, 0, 0); box(t, FLASK_H, FLASK_L + 2*t); popMatrix();
+  pushMatrix(); translate(FLASK_W/2 + t/2, 0, 0); box(t, FLASK_H, FLASK_L + 2*t); popMatrix();
+  pushMatrix(); translate(0, 0, -FLASK_L/2 - t/2); box(FLASK_W, FLASK_H, t); popMatrix();
+  pushMatrix(); translate(0, 0, FLASK_L/2 + t/2); box(FLASK_W, FLASK_H, t); popMatrix();
+  
+  // Side Handles
+  pushMatrix(); translate(-FLASK_W/2 - t - 15, 0, 0); box(30, 20, 40); popMatrix();
+  pushMatrix(); translate(FLASK_W/2 + t + 15, 0, 0); box(30, 20, 40); popMatrix();
+  popMatrix();
+}
+
+void drawSand() {
+  if (sandY >= FLASK_H - 1) return;
+
+  pushMatrix();
+  translate(0, sandY, 0);
+  
+  // 1. Draw the top surface of the sand, procedurally cutting a perfect hole for the pattern
+  fill(colorSand);
+  noStroke();
+  float res = 5.0; // Grid resolution for the cutout
+  for (float x = -FLASK_W/2; x < FLASK_W/2; x += res) {
+    for (float z = -FLASK_L/2; z < FLASK_L/2; z += res) {
+      if (!isInsidePattern(x + res/2, z + res/2)) {
+        beginShape(QUADS);
+        // Add +0.1 to avoid microscopic rendering seams between grid tiles
+        vertex(x, 0, z);
+        vertex(x+res+0.1, 0, z);
+        vertex(x+res+0.1, 0, z+res+0.1);
+        vertex(x, 0, z+res+0.1);
+        endShape();
+      }
+    }
+  }
+  
+  // 2. Draw Sand Block Outer Walls (To make the block look solid)
+  float h = FLASK_H - sandY;
+  beginShape(QUADS);
+  // Front & Back
+  vertex(-FLASK_W/2, 0, FLASK_L/2); vertex(FLASK_W/2, 0, FLASK_L/2); vertex(FLASK_W/2, h, FLASK_L/2); vertex(-FLASK_W/2, h, FLASK_L/2);
+  vertex(FLASK_W/2, 0, -FLASK_L/2); vertex(-FLASK_W/2, 0, -FLASK_L/2); vertex(-FLASK_W/2, h, -FLASK_L/2); vertex(FLASK_W/2, h, -FLASK_L/2);
+  // Left & Right
+  vertex(-FLASK_W/2, 0, -FLASK_L/2); vertex(-FLASK_W/2, 0, FLASK_L/2); vertex(-FLASK_W/2, h, FLASK_L/2); vertex(-FLASK_W/2, h, -FLASK_L/2);
+  vertex(FLASK_W/2, 0, FLASK_L/2); vertex(FLASK_W/2, 0, -FLASK_L/2); vertex(FLASK_W/2, h, -FLASK_L/2); vertex(FLASK_W/2, h, FLASK_L/2);
+  endShape();
+  
+  // 3. Draw the Negative Space Cavity inside the hole (Revealed when pattern lifts)
+  if (state >= EXTRACT) {
+    pushMatrix();
+    translate(cx, 0, cz);
+    drawCavity();
+    popMatrix();
+  }
+  
+  popMatrix();
+}
+
+// ================================================================
+// COMPLEX 3D MESH GENERATION (ELBOW PIPES & SHELLS)
+// ================================================================
+
+void drawElbowPattern() {
+  noStroke();
+  
+  // Outer bulging shell
+  fill(colorPattern);
+  drawArcShell(R, rOut, 0, PI);
+  
+  // Inner hollow shell (Makes it a true "Shell Pattern")
+  fill(colorPatternIn);
+  drawArcShell(R, rIn, 0, PI);
+  
+  // Solid caps connecting outer and inner shells along the split line
+  fill(colorPattern);
+  drawThicknessCaps(R, rOut, rIn);
+  
+  // End Flanges
+  drawFlange(R, flangeR, rIn, flangeW, true);  // Start Flange (along X)
+  drawFlange(R, flangeR, rIn, flangeW, false); // End Flange (along Z)
+}
+
+void drawCavity() {
+  noStroke();
+  fill(colorCavity);
+  
+  // The cavity is perfectly identical to the pattern's outer surface, 
+  // embedded downwards into the sand block.
+  drawArcShell(R, rOut, 0, PI);
+  drawFlangeCavity(R, flangeR, flangeW, true);
+  drawFlangeCavity(R, flangeR, flangeW, false);
+}
+
+// --- MESH HELPERS ---
+
+void drawArcShell(float bendRad, float tubeRad, float phiStart, float phiEnd) {
+  int tSteps = 20; // Curve resolution
+  int pSteps = 15; // Cross-section resolution
+  
+  for(int i = 0; i < tSteps; i++) {
+    float t1 = map(i, 0, tSteps, 0, HALF_PI);
+    float t2 = map(i+1, 0, tSteps, 0, HALF_PI);
+    
+    for(int j = 0; j < pSteps; j++) {
+      float p1 = map(j, 0, pSteps, phiStart, phiEnd);
+      float p2 = map(j+1, 0, pSteps, phiStart, phiEnd);
+      
+      PVector v1 = getPipePoint(bendRad, tubeRad, t1, p1);
+      PVector v2 = getPipePoint(bendRad, tubeRad, t2, p1);
+      PVector v3 = getPipePoint(bendRad, tubeRad, t2, p2);
+      PVector v4 = getPipePoint(bendRad, tubeRad, t1, p2);
+      
+      beginShape(QUADS);
+      vertex(v1.x, v1.y, v1.z);
+      vertex(v2.x, v2.y, v2.z);
+      vertex(v3.x, v3.y, v3.z);
+      vertex(v4.x, v4.y, v4.z);
+      endShape();
+    }
+  }
+}
+
+void drawThicknessCaps(float bendRad, float rO, float rI) {
+  int tSteps = 20;
+  for(int i = 0; i < tSteps; i++) {
+    float t1 = map(i, 0, tSteps, 0, HALF_PI);
+    float t2 = map(i+1, 0, tSteps, 0, HALF_PI);
+    
+    // Outer Bend Cap (phi = 0)
+    PVector o1 = getPipePoint(bendRad, rO, t1, 0);
+    PVector o2 = getPipePoint(bendRad, rO, t2, 0);
+    PVector i2 = getPipePoint(bendRad, rI, t2, 0);
+    PVector i1 = getPipePoint(bendRad, rI, t1, 0);
+    beginShape(QUADS); vertex(o1.x, o1.y, o1.z); vertex(o2.x, o2.y, o2.z); vertex(i2.x, i2.y, i2.z); vertex(i1.x, i1.y, i1.z); endShape();
+    
+    // Inner Bend Cap (phi = PI)
+    o1 = getPipePoint(bendRad, rO, t1, PI);
+    o2 = getPipePoint(bendRad, rO, t2, PI);
+    i2 = getPipePoint(bendRad, rI, t2, PI);
+    i1 = getPipePoint(bendRad, rI, t1, PI);
+    beginShape(QUADS); vertex(o1.x, o1.y, o1.z); vertex(o2.x, o2.y, o2.z); vertex(i2.x, i2.y, i2.z); vertex(i1.x, i1.y, i1.z); endShape();
+  }
+}
+
+void drawFlange(float bendRad, float fRad, float innerTubeRad, float fWidth, boolean isX) {
+  pushMatrix();
+  if (isX) {
+    translate(bendRad, 0, 0);
+    rotateY(HALF_PI); // Align local Z to global X
+  } else {
+    translate(0, 0, bendRad);
+  }
+  
+  // Draw Hollow Half-Cylinder
+  int pSteps = 15;
+  for(int i = 0; i < pSteps; i++) {
+    float p1 = map(i, 0, pSteps, 0, PI);
+    float p2 = map(i+1, 0, pSteps, 0, PI);
+    
+    // Outer Curve
+    beginShape(QUADS);
+    vertex(fRad*cos(p1), fRad*sin(p1), 0); vertex(fRad*cos(p1), fRad*sin(p1), fWidth);
+    vertex(fRad*cos(p2), fRad*sin(p2), fWidth); vertex(fRad*cos(p2), fRad*sin(p2), 0);
+    endShape();
+    
+    // Inner Curve (Hole)
+    beginShape(QUADS);
+    vertex(innerTubeRad*cos(p1), innerTubeRad*sin(p1), 0); vertex(innerTubeRad*cos(p1), innerTubeRad*sin(p1), fWidth);
+    vertex(innerTubeRad*cos(p2), innerTubeRad*sin(p2), fWidth); vertex(innerTubeRad*cos(p2), innerTubeRad*sin(p2), 0);
+    endShape();
+    
+    // Front Face (z=0)
+    beginShape(QUADS);
+    vertex(fRad*cos(p1), fRad*sin(p1), 0); vertex(fRad*cos(p2), fRad*sin(p2), 0);
+    vertex(innerTubeRad*cos(p2), innerTubeRad*sin(p2), 0); vertex(innerTubeRad*cos(p1), innerTubeRad*sin(p1), 0);
+    endShape();
+    
+    // Back Face (z=fWidth)
+    beginShape(QUADS);
+    vertex(fRad*cos(p1), fRad*sin(p1), fWidth); vertex(fRad*cos(p2), fRad*sin(p2), fWidth);
+    vertex(innerTubeRad*cos(p2), innerTubeRad*sin(p2), fWidth); vertex(innerTubeRad*cos(p1), innerTubeRad*sin(p1), fWidth);
+    endShape();
+  }
+  
+  // Bottom Split Edges
+  beginShape(QUADS);
+  vertex(fRad, 0, 0); vertex(fRad, 0, fWidth); vertex(innerTubeRad, 0, fWidth); vertex(innerTubeRad, 0, 0);
+  vertex(-fRad, 0, 0); vertex(-fRad, 0, fWidth); vertex(-innerTubeRad, 0, fWidth); vertex(-innerTubeRad, 0, 0);
+  endShape();
+  
+  popMatrix();
+}
+
+void drawFlangeCavity(float bendRad, float fRad, float fWidth, boolean isX) {
+  pushMatrix();
+  if (isX) {
+    translate(bendRad, 0, 0);
+    rotateY(HALF_PI); 
+  } else {
+    translate(0, 0, bendRad);
+  }
+  
+  int pSteps = 15;
+  for(int i = 0; i < pSteps; i++) {
+    float p1 = map(i, 0, pSteps, 0, PI);
+    float p2 = map(i+1, 0, pSteps, 0, PI);
+    
+    // Outer mold boundary
+    beginShape(QUADS);
+    vertex(fRad*cos(p1), fRad*sin(p1), 0); vertex(fRad*cos(p1), fRad*sin(p1), fWidth);
+    vertex(fRad*cos(p2), fRad*sin(p2), fWidth); vertex(fRad*cos(p2), fRad*sin(p2), 0);
+    endShape();
+    
+    // Cap at the deep end of the sand block (so we can't see through the hole)
+    beginShape(TRIANGLES);
+    vertex(0, 0, fWidth);
+    vertex(fRad*cos(p2), fRad*sin(p2), fWidth);
+    vertex(fRad*cos(p1), fRad*sin(p1), fWidth);
+    endShape();
+  }
+  popMatrix();
+}
+
+PVector getPipePoint(float bendRad, float tubeRad, float theta, float phi) {
+  float currentRadius = bendRad + tubeRad * cos(phi);
+  return new PVector(currentRadius * cos(theta), tubeRad * sin(phi), currentRadius * sin(theta));
+}
+
+// --- SPATIAL HOLE CUTOUT LOGIC ---
+
+boolean isInsidePattern(float globalX, float globalZ) {
+  // Translate to the local center of the elbow arc
+  float locX = globalX - cx;
+  float locZ = globalZ - cz;
+
+  float angle = atan2(locZ, locX);
+  float d = dist(0, 0, locX, locZ);
+
+  // 1. Check Main Curved Body
+  // Add slight +/- 0.05 tolerance to the angle to overlap flanges seamlessly
+  if (angle >= -0.05 && angle <= HALF_PI + 0.05) {
+    // Add +/- 1 unit tolerance to radius to prevent rendering gaps
+    if (d >= R - rOut - 1 && d <= R + rOut + 1) return true;
+  }
+
+  // 2. Check Start Flange (Extends along +X)
+  if (locX >= R - 2 && locX <= R + flangeW + 1 && locZ >= -flangeR - 1 && locZ <= flangeR + 1) return true;
+
+  // 3. Check End Flange (Extends along +Z)
+  if (locZ >= R - 2 && locZ <= R + flangeW + 1 && locX >= -flangeR - 1 && locX <= flangeR + 1) return true;
+
+  return false;
+}
+
+// ================================================================
+// 2D USER INTERFACE
+// ================================================================
+void drawUI() {
+  String title = "";
+  String subtitle = "";
+  String btnText = "";
+
+  if (state == SETUP) {
+    title = "STEP 1: SETUP DRAG FLASK";
+    subtitle = "The empty drag flask sits on the moulding board.";
+    btnText = "PLACE DRAG PATTERN";
+  } else if (state == PLACE_PATTERN) {
+    title = "STEP 2: PLACE SHELL PATTERN";
+    subtitle = "The hollow split shell pattern (drag half) is placed inside.";
+    btnText = "RAM SAND";
+  } else if (state == RAM_SAND) {
+    title = "STEP 3: RAM SAND";
+    subtitle = "Moulding sand is firmly rammed around the shell pattern.";
+    btnText = "EXTRACT PATTERN";
+  } else if (state == EXTRACT) {
+    title = "STEP 4: EXTRACT PATTERN";
+    subtitle = "The shell pattern is removed, revealing the negative space.";
+    btnText = "INSPECT CAVITY";
+  } else if (state == FINAL_VIEW) {
+    title = "STEP 5: TRUE 3D HOLLOW CAVITY";
+    subtitle = "A perfectly hollow pipe cavity formed by the shell pattern!";
+    btnText = "RESTART";
+  }
+
+  fill(255, 255, 255, 230);
+  noStroke(); rect(0, 0, width, 90);
+
+  fill(20); textAlign(CENTER, TOP); textSize(28);
+  text(title, width / 2, 15);
+  fill(70); textSize(18);
+  text(subtitle, width / 2, 55);
+
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+  boolean over = mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH;
+
+  fill(over ? 220 : 255); stroke(120); strokeWeight(2);
+  rect(bx, by, btnW, btnH, 8);
+
+  fill(30); textAlign(CENTER, CENTER); textSize(22);
+  text(btnText, bx + btnW / 2, by + btnH / 2 - 3);
+
+  fill(90); textAlign(LEFT, BOTTOM); textSize(16);
+  text("Drag screen = Rotate 3D view", 20, height - 15);
+}
+
+// ================================================================
+// INPUT HANDLING
+// ================================================================
+void mouseDragged() {
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+
+  if (!(mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+    if (state != FINAL_VIEW) targetRotX = rotX; 
+  }
+}
+
+void mouseReleased() {
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+
+  if (mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH) {
+    if (state == SETUP) {
+      state = PLACE_PATTERN;
+      targetPatternX = cx; 
+      targetPatternY = 0; 
+      targetPatternZ = cz;
+    } 
+    else if (state == PLACE_PATTERN) {
+      state = RAM_SAND;
+      targetSandY = 0; // Animate sand filling
+    } 
+    else if (state == RAM_SAND) {
+      state = EXTRACT;
+      targetPatternY = -180; // Lift up
+      targetPatternX = cx - 120; // Move aside
+    } 
+    else if (state == EXTRACT) {
+      state = FINAL_VIEW;
+      targetRotX = PI / 7.0; // Auto-tilt to stare beautifully inside the deep hole
+    } 
+    else if (state == FINAL_VIEW) {
+      state = SETUP;
+      patternX = cx - 200; targetPatternX = cx - 200;
+      patternY = -150;     targetPatternY = -150;
+      patternZ = cz;       targetPatternZ = cz;
+      sandY = FLASK_H;     targetSandY = FLASK_H;
+      targetRotX = -PI / 5.0;
+    }
+  }
+}
