@@ -1,0 +1,223 @@
+Split piece pattern split piece pattern
+
+// 3D Sand Casting Simulation - Two-Piece (Split) Pattern
+// Demonstrating Dumbbell Pattern, Dowel Pins, and Cope/Drag Separation
+
+int state = 0;
+
+// Animation Variables
+float animCopeY = -600;      float targetCopeY = -600;
+float animTopPatY = -600;    float targetTopPatY = -600;
+float animBotPatY = 0;       float targetBotPatY = 0;
+
+// Camera configuration
+float rotX = -PI/6;
+float rotY = PI/4;
+
+// UI Button
+float btnW = 200;
+float btnH = 50;
+
+void setup() {
+  size(1000, 700, P3D);
+  smooth();
+}
+
+void draw() {
+  background(240);
+  
+  // 3D Lighting and Camera Setup
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(120, 120, 120);
+  directionalLight(255, 255, 255, -0.5, 1, -0.5);
+
+  pushMatrix();
+  translate(width/2, height/2 + 20, -200);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // Smooth Animations
+  animCopeY = lerp(animCopeY, targetCopeY, 0.1);
+  animTopPatY = lerp(animTopPatY, targetTopPatY, 0.1);
+  animBotPatY = lerp(animBotPatY, targetBotPatY, 0.1);
+
+  // --- 1. DRAG (Bottom Box) ---
+  // Blue wireframe for the Drag flask
+  drawFlaskBox(0, 50, 0, 400, 100, 200, color(50, 80, 200));
+  drawDragSand(); // Always filled in this simulation step
+
+  // --- 2. BOTTOM PATTERN ---
+  pushMatrix();
+  translate(0, animBotPatY, 0);
+  drawBottomPattern();
+  popMatrix();
+
+  // --- 3. TOP PATTERN ---
+  pushMatrix();
+  translate(0, animTopPatY, 0);
+  drawTopPattern();
+  popMatrix();
+
+  // --- 4. COPE (Top Box) ---
+  pushMatrix();
+  translate(0, animCopeY, 0);
+  // Red wireframe for the Cope flask
+  drawFlaskBox(0, -50, 0, 400, 100, 200, color(200, 60, 50));
+  if (state >= 2) {
+    drawCopeSand();
+  }
+  popMatrix();
+
+  popMatrix(); // End 3D Scene
+
+  // --- 2D UI Overlay ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  
+  // Top Status Text
+  fill(40);
+  textSize(28);
+  textAlign(CENTER, TOP);
+  String msg = "";
+  if (state == 0) msg = "Step 1: Drag filled with sand, Bottom Pattern placed.";
+  if (state == 1) msg = "Step 2: Place Top Half of Pattern (Aligned with Dowel Pins).";
+  if (state == 2) msg = "Step 3: Place Cope (Top Box) and pack with sand.";
+  if (state == 3) msg = "Step 4: Separate Flasks (Lift Cope with Top Pattern).";
+  if (state == 4) msg = "Step 5: Remove both Pattern Halves to reveal Split Cavity.";
+  text(msg, width/2, 30);
+  
+  // Next Button
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  stroke(120);
+  strokeWeight(2);
+  if (mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH) fill(220); 
+  else fill(245);
+  rect(btnX, btnY, btnW, btnH, 8);
+  
+  fill(0);
+  textSize(20);
+  textAlign(CENTER, CENTER);
+  text(state == 4 ? "Restart Process" : "Next Step", btnX + btnW/2, btnY + btnH/2 - 2);
+}
+
+// ==========================================
+// GEOMETRY DRAWING FUNCTIONS
+// ==========================================
+
+void drawBottomPattern() {
+  noStroke(); 
+  fill(160); // Dark grey
+  // Dimensions slightly reduced (e.g., 79 instead of 80) to prevent 3D Z-fighting with sand
+  // Left head
+  pushMatrix(); translate(-100, 20.5, 0); box(79, 39, 79); popMatrix();
+  // Right head
+  pushMatrix(); translate(100, 20.5, 0); box(79, 39, 79); popMatrix();
+  // Handle
+  pushMatrix(); translate(0, 7.5, 0); box(119, 15, 29); popMatrix();
+
+  // Dowel Pins (Aligning mechanisms sticking up)
+  fill(255, 180, 0); // Golden pins
+  pushMatrix(); translate(-100, -10, 0); box(10, 20, 10); popMatrix();
+  pushMatrix(); translate(100, -10, 0); box(10, 20, 10); popMatrix();
+}
+
+void drawTopPattern() {
+  noStroke(); 
+  fill(175); // Lighter grey for visual distinction
+  // Left head
+  pushMatrix(); translate(-100, -20.5, 0); box(79, 39, 79); popMatrix();
+  // Right head
+  pushMatrix(); translate(100, -20.5, 0); box(79, 39, 79); popMatrix();
+  // Handle
+  pushMatrix(); translate(0, -7.5, 0); box(119, 15, 29); popMatrix();
+}
+
+// Draws the bottom sand block with a perfect negative cutout for the bottom half pattern
+void drawDragSand() {
+  noStroke(); 
+  fill(210, 120, 70);
+  // Base floor
+  pushMatrix(); translate(0, 70, 0); box(400, 60, 200); popMatrix();
+  // Surrounding the heads and handle
+  pushMatrix(); translate(0, 20, -70); box(400, 40, 60); popMatrix();      // Back
+  pushMatrix(); translate(0, 20, 70); box(400, 40, 60); popMatrix();       // Front
+  pushMatrix(); translate(-170, 20, 0); box(60, 40, 80); popMatrix();      // Far Left
+  pushMatrix(); translate(170, 20, 0); box(60, 40, 80); popMatrix();       // Far Right
+  pushMatrix(); translate(0, 20, -27.5); box(120, 40, 25); popMatrix();    // Back-Mid
+  pushMatrix(); translate(0, 20, 27.5); box(120, 40, 25); popMatrix();     // Front-Mid
+  pushMatrix(); translate(0, 27.5, 0); box(120, 25, 30); popMatrix();      // Under-Handle
+}
+
+// Draws the top sand block with a perfect negative cutout for the top half pattern
+void drawCopeSand() {
+  noStroke(); 
+  fill(210, 120, 70);
+  // Ceiling
+  pushMatrix(); translate(0, -70, 0); box(400, 60, 200); popMatrix();
+  // Surrounding the heads and handle
+  pushMatrix(); translate(0, -20, -70); box(400, 40, 60); popMatrix();     // Back
+  pushMatrix(); translate(0, -20, 70); box(400, 40, 60); popMatrix();      // Front
+  pushMatrix(); translate(-170, -20, 0); box(60, 40, 80); popMatrix();     // Far Left
+  pushMatrix(); translate(170, -20, 0); box(60, 40, 80); popMatrix();      // Far Right
+  pushMatrix(); translate(0, -20, -27.5); box(120, 40, 25); popMatrix();   // Back-Mid
+  pushMatrix(); translate(0, -20, 27.5); box(120, 40, 25); popMatrix();    // Front-Mid
+  pushMatrix(); translate(0, -27.5, 0); box(120, 25, 30); popMatrix();     // Over-Handle
+}
+
+void drawFlaskBox(float x, float y, float z, float w, float h, float d, color c) {
+  pushMatrix();
+  translate(x, y, z);
+  noFill();
+  strokeWeight(4);
+  stroke(c);
+  box(w, h, d);
+  popMatrix();
+}
+
+// ==========================================
+// INTERACTION HANDLING
+// ==========================================
+
+void mouseDragged() {
+  // Rotate only if not dragging on the button area
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  if (!(mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+void mouseReleased() {
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  if (mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH) {
+    state++;
+    if (state > 4) state = 0; 
+    
+    // Update Animation Targets
+    if (state == 0) {
+      targetCopeY = -600;
+      targetTopPatY = -600;
+      targetBotPatY = 0;
+    } else if (state == 1) {
+      targetCopeY = -600;
+      targetTopPatY = 0; 
+    } else if (state == 2) {
+      targetCopeY = 0;
+      targetTopPatY = 0; 
+    } else if (state == 3) {
+      targetCopeY = -250;    // Lift Cope up
+      targetTopPatY = -250;  // Top pattern travels up inside the Cope sand
+    } else if (state == 4) {
+      targetCopeY = -250;
+      targetTopPatY = -600;  // Take top pattern completely out
+      targetBotPatY = -600;  // Lift bottom pattern out to reveal cavity
+    }
+  }
+}
