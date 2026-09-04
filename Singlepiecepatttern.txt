@@ -1,0 +1,213 @@
+Single piece pattern single piece pattern foundry casting 
+
+// 3D Sand Casting Simulation - Single Piece Pattern
+// Fully Interactive Step-by-Step Simulation
+
+int state = 0;
+
+// Animation Variables
+float patternY = -600;
+float targetPatternY = -600;
+float sandH = 0;
+float targetSandH = 0;
+
+// Camera rotation variables
+float rotX = -PI/6;
+float rotY = PI/4;
+
+// Dimension Constants - Big Box (Flask)
+float W = 400;      // Flask Width
+float D = 200;      // Flask Depth
+float h_base = 80;  // Sand depth below the pattern
+float w_stem = 80;  // T-Pattern stem width
+float h_stem = 100; // T-Pattern stem height
+float w_top = 220;  // T-Pattern top width
+float h_top = 60;   // T-Pattern top height
+float total_h = h_base + h_stem + h_top; // Total Flask Height (240)
+
+// Button Configuration
+float btnW = 180;
+float btnH = 50;
+
+void setup() {
+  size(1000, 700, P3D);
+  smooth();
+}
+
+void draw() {
+  background(240);
+  
+  // 3D Lighting and Camera Setup
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(110, 110, 110);
+  directionalLight(255, 255, 255, -0.5, 1, -1);
+
+  pushMatrix();
+  translate(width/2, height/2 - 30, -200);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // Smooth Animations
+  patternY = lerp(patternY, targetPatternY, 0.1);
+  sandH = lerp(sandH, targetSandH, 0.1);
+
+  // 1. Draw Flask (Wireframe big box)
+  pushMatrix();
+  noFill();
+  stroke(240, 180, 50);
+  strokeWeight(5);
+  box(W, total_h, D);
+  popMatrix();
+
+  // 2. Draw Moulding Sand (Using dynamic partial blocks for pouring effect)
+  pushMatrix();
+  noStroke();
+  fill(210, 100, 80); // Reddish-brown sand
+
+  // currentSandY calculates the top surface of the rising sand
+  float currentSandY = (total_h / 2) - sandH;
+
+  if (sandH > 1) {
+    // Bottom solid sand base
+    drawPartialBox(0, total_h/2 - h_base/2, 0, W, h_base, D, currentSandY);
+    
+    // Sand on left and right of T-stem
+    float leftStemW = (W - w_stem)/2;
+    float leftStemCx = -W/2 + leftStemW/2;
+    float rightStemCx = W/2 - leftStemW/2;
+    float stemCy = total_h/2 - h_base - h_stem/2;
+    drawPartialBox(leftStemCx, stemCy, 0, leftStemW, h_stem, D, currentSandY);
+    drawPartialBox(rightStemCx, stemCy, 0, leftStemW, h_stem, D, currentSandY);
+    
+    // Sand on left and right of T-top
+    float leftTopW = (W - w_top)/2;
+    float leftTopCx = -W/2 + leftTopW/2;
+    float rightTopCx = W/2 - leftTopW/2;
+    float topCy = -total_h/2 + h_top/2;
+    drawPartialBox(leftTopCx, topCy, 0, leftTopW, h_top, D, currentSandY);
+    drawPartialBox(rightTopCx, topCy, 0, leftTopW, h_top, D, currentSandY);
+  }
+  popMatrix();
+
+  // 3. Draw Single Piece Pattern
+  pushMatrix();
+  noStroke();
+  fill(170); // Grey pattern
+  translate(0, patternY, 0);
+
+  // T-Top
+  pushMatrix();
+  translate(0, -total_h/2 + h_top/2, 0);
+  box(w_top, h_top, D * 0.99); // Scaled slightly to avoid 3D Z-fighting
+  popMatrix();
+  
+  // T-Stem
+  pushMatrix();
+  translate(0, total_h/2 - h_base - h_stem/2, 0);
+  box(w_stem, h_stem, D * 0.99); 
+  popMatrix();
+
+  popMatrix(); // End Pattern
+  popMatrix(); // End 3D Scene
+
+  // --- 2D UI Overlay ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  
+  // Top Status Text
+  fill(50);
+  textSize(32);
+  textAlign(CENTER, TOP);
+  String msg = "";
+  if (state == 0) msg = "Step 1: Empty Flask";
+  if (state == 1) msg = "Step 2: Place Pattern in Center";
+  if (state == 2) msg = "Step 3: Pour Moulding Sand Around Pattern";
+  if (state == 3) msg = "Step 4: Remove Pattern -> Mold Cavity Revealed";
+  text(msg, width/2, 30);
+  
+  // Next Button Rendering
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 100;
+  
+  stroke(120);
+  strokeWeight(2);
+  if (mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH) {
+    fill(220); // Hover
+  } else {
+    fill(245); // Normal
+  }
+  rect(btnX, btnY, btnW, btnH, 8);
+  
+  fill(0);
+  textSize(22);
+  textAlign(CENTER, CENTER);
+  text(state == 3 ? "Restart" : "Next Step", btnX + btnW/2, btnY + btnH/2 - 2);
+}
+
+// Custom function to dynamically draw sand blocks as they "pour" from the bottom up
+void drawPartialBox(float cx, float cy, float cz, float bw, float bh, float bd, float sandTopY) {
+  float boxTop = cy - bh / 2.0;
+  float boxBottom = cy + bh / 2.0;
+  
+  if (sandTopY <= boxTop) {
+    // Sand completely covers this block vertically
+    pushMatrix();
+    translate(cx, cy, cz);
+    box(bw, bh, bd);
+    popMatrix();
+  } else if (sandTopY < boxBottom) {
+    // Sand partially covers this block (currently pouring through this height)
+    float newTop = sandTopY;
+    float newHeight = boxBottom - newTop;
+    float newCy = newTop + newHeight / 2.0;
+    
+    pushMatrix();
+    translate(cx, newCy, cz);
+    box(bw, newHeight, bd);
+    popMatrix();
+  }
+  // If sandTopY >= boxBottom, the sand hasn't reached this block yet, so draw nothing.
+}
+
+// --- Interaction Handling ---
+void mouseDragged() {
+  // Only rotate if not dragging on the UI button
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 100;
+  if (!(mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+void mouseReleased() {
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 100;
+  
+  // Check if "Next Step" button is clicked
+  if (mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH) {
+    state++;
+    if (state > 3) state = 0; // Loop back to start
+    
+    // Update targets to create the physically accurate logical sequence
+    if (state == 0) {
+      // Step 1: Empty
+      targetSandH = 0;
+      targetPatternY = -600;
+    } else if (state == 1) {
+      // Step 2: Keep pattern perfectly in center first
+      targetSandH = 0;
+      targetPatternY = 0; 
+    } else if (state == 2) {
+      // Step 3: Pour sand around the already-placed pattern
+      targetSandH = total_h;
+      targetPatternY = 0; 
+    } else if (state == 3) {
+      // Step 4: Take away pattern to reveal ONLY the mould cavity
+      targetSandH = total_h;
+      targetPatternY = -600;
+    }
+  }
+}
