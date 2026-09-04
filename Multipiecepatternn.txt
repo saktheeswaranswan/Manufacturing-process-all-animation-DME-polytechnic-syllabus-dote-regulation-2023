@@ -1,0 +1,245 @@
+multi piece pattern 
+
+
+// 3D Sand Casting Simulation - Multi-Piece Pattern (Drag, Cheek, Cope)
+// Demonstrating 3-part interlocking pattern with dowel pins
+
+int state = 0;
+
+// Animation Variables for Flasks
+float animCopeY = -600;   float targetCopeY = -600;
+float animCheekY = -600;  float targetCheekY = -600;
+float animDragY = 0;      // Drag stays on the ground
+
+// Animation Variables for Pattern Pieces
+float animTopPatY = -600; float targetTopPatY = -600;
+float animMidPatY = -600; float targetMidPatY = -600;
+float animBotPatY = 0;    float targetBotPatY = 0;
+
+// Camera configuration
+float rotX = -PI/6;
+float rotY = PI/4;
+
+// UI Button
+float btnW = 220;
+float btnH = 50;
+
+// Core Dimensions
+float flaskW = 400; 
+float flaskD = 200; 
+float flaskH = 80;
+
+void setup() {
+  size(1000, 700, P3D);
+  smooth();
+}
+
+void draw() {
+  background(240);
+  
+  // 3D Lighting and Camera Setup
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(130, 130, 130);
+  directionalLight(255, 255, 255, -0.5, 1, -0.5);
+
+  pushMatrix();
+  translate(width/2, height/2 + 60, -200);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // Smooth Animations
+  animCopeY = lerp(animCopeY, targetCopeY, 0.1);
+  animCheekY = lerp(animCheekY, targetCheekY, 0.1);
+  animTopPatY = lerp(animTopPatY, targetTopPatY, 0.1);
+  animMidPatY = lerp(animMidPatY, targetMidPatY, 0.1);
+  animBotPatY = lerp(animBotPatY, targetBotPatY, 0.1);
+
+  // --- 1. DRAG (Bottom Box) ---
+  pushMatrix();
+  translate(0, animDragY + flaskH, 0); 
+  drawFlaskBox(color(50, 80, 200)); // Blue Drag
+  drawSandCavity(160, 120, true, false); // Bottom cavity width 160, depth 120, has floor
+  popMatrix();
+
+  // --- 2. BOTTOM PATTERN ---
+  pushMatrix();
+  translate(0, animBotPatY + flaskH, 0);
+  drawBotPattern();
+  popMatrix();
+
+  // --- 3. MIDDLE PATTERN ---
+  pushMatrix();
+  translate(0, animMidPatY, 0);
+  drawMidPattern();
+  popMatrix();
+
+  // --- 4. CHEEK (Middle Box) ---
+  pushMatrix();
+  translate(0, animCheekY, 0);
+  if (state >= 2) {
+    drawFlaskBox(color(50, 200, 80)); // Green Cheek
+    drawSandCavity(80, 80, false, false); // Middle cavity width 80, depth 80
+  }
+  popMatrix();
+
+  // --- 5. TOP PATTERN ---
+  pushMatrix();
+  translate(0, animTopPatY - flaskH, 0);
+  drawTopPattern();
+  popMatrix();
+
+  // --- 6. COPE (Top Box) ---
+  pushMatrix();
+  translate(0, animCopeY - flaskH, 0);
+  if (state >= 4) {
+    drawFlaskBox(color(200, 60, 50)); // Red Cope
+    drawSandCavity(220, 140, false, true); // Top cavity width 220, depth 140, has ceiling
+  }
+  popMatrix();
+
+  popMatrix(); // End 3D Scene
+
+  // --- 2D UI Overlay ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  
+  // Top Status Text
+  fill(40);
+  textSize(26);
+  textAlign(CENTER, TOP);
+  String msg = "";
+  if (state == 0) msg = "Step 1: Drag box with sand, Bottom Pattern placed.";
+  if (state == 1) msg = "Step 2: Place Middle Pattern (Locks via dowel pins).";
+  if (state == 2) msg = "Step 3: Place Cheek Box (Middle Flask) and pour sand.";
+  if (state == 3) msg = "Step 4: Place Top Pattern (Locks via dowel pins).";
+  if (state == 4) msg = "Step 5: Place Cope (Top Flask) and pour sand.";
+  if (state == 5) msg = "Step 6: Separate all Flasks (Cope, Cheek, Drag).";
+  if (state == 6) msg = "Step 7: Remove Pattern pieces to reveal the full cavity.";
+  text(msg, width/2, 30);
+  
+  // Next Button
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  stroke(120);
+  strokeWeight(2);
+  if (mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH) fill(220); 
+  else fill(245);
+  rect(btnX, btnY, btnW, btnH, 8);
+  
+  fill(0);
+  textSize(20);
+  textAlign(CENTER, CENTER);
+  text(state == 6 ? "Restart Process" : "Next Step", btnX + btnW/2, btnY + btnH/2 - 2);
+}
+
+// ==========================================
+// GEOMETRY DRAWING FUNCTIONS
+// ==========================================
+
+void drawBotPattern() {
+  noStroke(); fill(150); // Dark grey
+  box(159, flaskH, 119); // Scaled slightly down (159 instead of 160) to avoid 3D Z-fighting
+  
+  // Dowel Pins (Aligning mechanisms sticking up)
+  fill(255, 180, 0); // Golden pins
+  pushMatrix(); translate(-40, -flaskH/2 - 10, 0); box(10, 20, 10); popMatrix();
+  pushMatrix(); translate(40, -flaskH/2 - 10, 0); box(10, 20, 10); popMatrix();
+}
+
+void drawMidPattern() {
+  noStroke(); fill(165); // Medium grey
+  box(79, flaskH, 79);
+  
+  // Dowel Pins for the top pattern to lock into
+  fill(255, 180, 0); 
+  pushMatrix(); translate(-20, -flaskH/2 - 10, 0); box(10, 20, 10); popMatrix();
+  pushMatrix(); translate(20, -flaskH/2 - 10, 0); box(10, 20, 10); popMatrix();
+}
+
+void drawTopPattern() {
+  noStroke(); fill(180); // Light grey
+  box(219, flaskH, 139); 
+}
+
+void drawFlaskBox(color c) {
+  noFill();
+  strokeWeight(4);
+  stroke(c);
+  box(flaskW, flaskH, flaskD);
+}
+
+// Draws the sand walls tightly around the given pattern dimensions to create the perfect negative cavity
+void drawSandCavity(float patW, float patD, boolean hasFloor, boolean hasCeil) {
+  noStroke(); 
+  fill(210, 120, 70); // Sand color
+  
+  // 4 Surrounding Walls
+  // Front Wall
+  pushMatrix(); translate(0, 0, flaskD/2 - (flaskD-patD)/4); box(flaskW, flaskH, (flaskD-patD)/2); popMatrix();
+  // Back Wall
+  pushMatrix(); translate(0, 0, -flaskD/2 + (flaskD-patD)/4); box(flaskW, flaskH, (flaskD-patD)/2); popMatrix();
+  // Left Wall
+  pushMatrix(); translate(-flaskW/2 + (flaskW-patW)/4, 0, 0); box((flaskW-patW)/2, flaskH, patD); popMatrix();
+  // Right Wall
+  pushMatrix(); translate(flaskW/2 - (flaskW-patW)/4, 0, 0); box((flaskW-patW)/2, flaskH, patD); popMatrix();
+
+  // Caps to contain the sand
+  if (hasFloor) {
+    pushMatrix(); translate(0, flaskH/2 - 10, 0); box(flaskW, 20, flaskD); popMatrix();
+  }
+  if (hasCeil) {
+    pushMatrix(); translate(0, -flaskH/2 + 10, 0); box(flaskW, 20, flaskD); popMatrix();
+  }
+}
+
+// ==========================================
+// INTERACTION HANDLING
+// ==========================================
+
+void mouseDragged() {
+  // Rotate only if not dragging on the button area
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  if (!(mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+void mouseReleased() {
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  if (mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH) {
+    state++;
+    if (state > 6) state = 0; 
+    
+    // Update Animation Targets
+    if (state == 0) {
+      targetCopeY = -600; targetCheekY = -600; targetTopPatY = -600; targetMidPatY = -600; targetBotPatY = 0;
+    } else if (state == 1) {
+      targetMidPatY = 0; // Middle pattern drops into place
+    } else if (state == 2) {
+      targetCheekY = 0;  // Cheek flask drops around middle pattern
+    } else if (state == 3) {
+      targetTopPatY = 0; // Top pattern drops into place
+    } else if (state == 4) {
+      targetCopeY = 0;   // Cope flask drops around top pattern
+    } else if (state == 5) {
+      // Separate the flasks vertically, pulling their respective patterns with them
+      targetCopeY = -280;   
+      targetTopPatY = -280; 
+      targetCheekY = -140;  
+      targetMidPatY = -140; 
+      targetBotPatY = 0;    
+    } else if (state == 6) {
+      // Remove patterns completely to reveal the empty split mold cavity
+      targetTopPatY = -800; 
+      targetMidPatY = -800; 
+      targetBotPatY = -800; 
+    }
+  }
+}
