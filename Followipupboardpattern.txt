@@ -1,0 +1,429 @@
+Follow up board pattern 
+
+
+// ================================================================
+// FOLLOW BOARD PATTERN - 3D SAND CASTING SIMULATION
+// COMPLETE APDE / PROCESSING ANDROID P3D SOURCE CODE
+//
+// TEACHING SEQUENCE:
+// STEP 1 : Setup Follow Board & Pattern
+// STEP 2 : Place Moulding Flask
+// STEP 3 : Fill with Moulding Sand
+// STEP 4 : Remove Follow Board
+// STEP 5 : Remove Pattern
+// STEP 6 : Final Mold Cavity Revealed
+//
+// TOUCH INSTRUCTIONS:
+// Drag screen = rotate 3D model
+// Next Step = advance animation
+// ================================================================
+
+// ================================================================
+// STATE MACHINE
+// ================================================================
+int state = 0;
+
+final int SETUP_BOARD    = 0;
+final int PLACE_FLASK    = 1;
+final int FILL_SAND      = 2;
+final int REMOVE_BOARD   = 3;
+final int REMOVE_PATTERN = 4;
+final int FINAL_CAVITY   = 5;
+
+// ================================================================
+// CAMERA & INTERACTION
+// ================================================================
+float rotX = -PI / 6.0;
+float rotY = PI / 4.0;
+float targetRotX = -PI / 6.0; // Used to auto-tilt camera at the end
+float cameraZ = -300;
+
+float btnW = 280;
+float btnH = 60;
+
+// ================================================================
+// ANIMATION VARIABLES
+// ================================================================
+float flaskY = -300;
+float targetFlaskY = -300;
+
+float sandFill = 0.0;
+float targetSandFill = 0.0;
+
+float boardY = 0;
+float targetBoardY = 0;
+
+float patternY = 0;
+float targetPatternY = 0;
+
+// ================================================================
+// COLOURS
+// ================================================================
+int colorBoard, colorPattern, colorFlask, colorSand, colorCavity;
+
+// ================================================================
+// SETUP
+// ================================================================
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  smooth(4);
+
+  // Material Colors matching the diagrams
+  colorBoard   = color(255, 140, 40);   // Orange board
+  colorPattern = color(170, 175, 180);  // Grey metal pattern shell
+  colorFlask   = color(220, 160, 90);   // Light wood/metal flask
+  colorSand    = color(210, 110, 110);  // Pinkish/Red moulding sand
+  colorCavity  = color(150, 70, 70);    // Darker sand for inner cavity shading
+}
+
+// ================================================================
+// MAIN DRAW LOOP
+// ================================================================
+void draw() {
+  background(240, 245, 250);
+
+  updateAnimations();
+
+  // --- 3D SCENE SETUP ---
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(130, 130, 130);
+  directionalLight(255, 255, 255, -0.5, 1.0, -0.45);
+
+  pushMatrix();
+  translate(width / 2, height / 2, cameraZ);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // 1. Draw Sand Cavity (Underneath)
+  if (state >= FILL_SAND) {
+    drawSand();
+  }
+
+  // 2. Draw Pattern (Moves down during removal)
+  if (state <= REMOVE_PATTERN) {
+    pushMatrix();
+    translate(0, patternY, 0);
+    drawPattern();
+    popMatrix();
+  }
+
+  // 3. Draw Follow Board (Moves down during removal)
+  if (state <= REMOVE_BOARD) {
+    pushMatrix();
+    translate(0, boardY, 0);
+    drawFollowBoard();
+    popMatrix();
+  }
+
+  // 4. Draw Flask
+  if (state >= PLACE_FLASK) {
+    pushMatrix();
+    translate(0, flaskY, 0);
+    drawFlask();
+    popMatrix();
+  }
+
+  popMatrix();
+
+  // --- 2D UI OVERLAY ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  drawUI();
+}
+
+// ================================================================
+// ANIMATION CONTROLLER
+// ================================================================
+void updateAnimations() {
+  // Smooth easing for all animated components
+  flaskY   = lerp(flaskY, targetFlaskY, 0.1);
+  sandFill = lerp(sandFill, targetSandFill, 0.05);
+  boardY   = lerp(boardY, targetBoardY, 0.08);
+  patternY = lerp(patternY, targetPatternY, 0.08);
+  
+  // Smooth camera tilt for final step to reveal cavity underneath
+  rotX = lerp(rotX, targetRotX, 0.05);
+}
+
+// ================================================================
+// 3D MODEL RENDERING METHODS
+// ================================================================
+
+void drawFollowBoard() {
+  fill(colorBoard);
+  stroke(200, 100, 20);
+  strokeWeight(1);
+
+  // Wide base plate
+  pushMatrix();
+  translate(0, 15, 0);
+  box(300, 30, 180);
+  popMatrix();
+
+  // Inner core geometry (Step 1, Step 2, and Dome)
+  drawCoreGeometry(0);
+}
+
+void drawPattern() {
+  fill(colorPattern);
+  stroke(100);
+  strokeWeight(1.5);
+  
+  // The pattern is a thin shell perfectly offset over the core geometry.
+  // We pass an expansion value of 6 pixels to slightly oversize it.
+  drawCoreGeometry(6);
+  
+  // Draw the flanges resting on the board base
+  pushMatrix();
+  translate(0, -3, 0);
+  box(210, 6, 150);
+  popMatrix();
+}
+
+void drawCoreGeometry(float expand) {
+  // This function draws the stepped profile used by both the board and the pattern.
+  // 'expand' makes the shape slightly larger to act as a shell.
+  
+  noStroke();
+  
+  // Step 1
+  pushMatrix();
+  translate(0, -15 - expand/2.0, 0);
+  box(160 + expand, 30 + expand, 120 + expand);
+  popMatrix();
+
+  // Step 2
+  pushMatrix();
+  translate(0, -40 - expand/2.0, 0);
+  box(100 + expand, 20 + expand, 120 + expand);
+  popMatrix();
+
+  // Top Dome (Half Cylinder)
+  pushMatrix();
+  translate(0, -50 - expand, 0);
+  drawSemiCylinder(50 + expand/2.0, 120 + expand);
+  popMatrix();
+}
+
+void drawFlask() {
+  fill(colorFlask);
+  stroke(180, 120, 60);
+  strokeWeight(2);
+
+  float w = 300; 
+  float d = 180; 
+  float h = 120; 
+  float t = 10; // Wall thickness
+
+  // Left Wall
+  pushMatrix(); translate(-w/2 + t/2, -h/2, 0); box(t, h, d); popMatrix();
+  // Right Wall
+  pushMatrix(); translate(w/2 - t/2, -h/2, 0); box(t, h, d); popMatrix();
+  // Front Wall
+  pushMatrix(); translate(0, -h/2, d/2 - t/2); box(w - 2*t, h, t); popMatrix();
+  // Back Wall
+  pushMatrix(); translate(0, -h/2, -d/2 + t/2); box(w - 2*t, h, t); popMatrix();
+}
+
+void drawSand() {
+  float w = 280;
+  float d = 160;
+  float maxH = 120;
+  float currentH = maxH * sandFill;
+  
+  if (currentH < 1) return;
+
+  // Main solid sand block
+  pushMatrix();
+  translate(0, -currentH/2, 0);
+  fill(colorSand);
+  noStroke();
+  box(w, currentH, d);
+  popMatrix();
+
+  // If we are in the final stages and looking underneath, render the cavity indent
+  if (state >= REMOVE_PATTERN) {
+    fill(colorCavity); // Dark shaded color creates the 3D cavity optical illusion
+    noStroke();
+    
+    // The cavity matches the exact shape of the pattern shell
+    drawCoreGeometry(6);
+    
+    // Flange cavity indent
+    pushMatrix();
+    translate(0, -3, 0);
+    box(210, 6.5, 150);
+    popMatrix();
+  }
+}
+
+// ------------------------------------------------
+// GEOMETRY HELPERS
+// ------------------------------------------------
+void drawSemiCylinder(float r, float h) {
+  // Draws a horizontal half-cylinder used for the top dome of the pattern
+  
+  // Curved Top Surface
+  beginShape(QUAD_STRIP);
+  for(int i = 0; i <= 20; i++) {
+    float a = PI + PI * (i / 20.0); // Sweep from PI to 2*PI (top half)
+    float x = cos(a) * r;
+    float y = sin(a) * r;
+    vertex(x, y, -h/2);
+    vertex(x, y, h/2);
+  }
+  endShape();
+  
+  // Front Face
+  beginShape();
+  for(int i = 0; i <= 20; i++) {
+    float a = PI + PI * (i / 20.0);
+    vertex(cos(a) * r, sin(a) * r, h/2);
+  }
+  endShape(CLOSE);
+  
+  // Back Face
+  beginShape();
+  for(int i = 0; i <= 20; i++) {
+    float a = PI + PI * (i / 20.0);
+    vertex(cos(a) * r, sin(a) * r, -h/2);
+  }
+  endShape(CLOSE);
+}
+
+
+// ================================================================
+// 2D USER INTERFACE
+// ================================================================
+void drawUI() {
+  String title = "";
+  String subtitle = "";
+
+  if (state == SETUP_BOARD) {
+    title = "STEP 1: SETUP BOARD & PATTERN";
+    subtitle = "The master pattern is supported completely by the contoured Follow Board.";
+  } else if (state == PLACE_FLASK) {
+    title = "STEP 2: PLACE FLASK";
+    subtitle = "The moulding flask is positioned over the board and pattern.";
+  } else if (state == FILL_SAND) {
+    title = "STEP 3: FILL MOULDING SAND";
+    subtitle = "Sand is packed into the flask. The board prevents the thin pattern from breaking.";
+  } else if (state == REMOVE_BOARD) {
+    title = "STEP 4: REMOVE FOLLOW BOARD";
+    subtitle = "The setup is inverted (simulated here by dropping the board away).";
+  } else if (state == REMOVE_PATTERN) {
+    title = "STEP 5: EXTRACT PATTERN";
+    subtitle = "The thin pattern shell is carefully removed from the compacted sand.";
+  } else if (state == FINAL_CAVITY) {
+    title = "STEP 6: FINAL MOLD CAVITY";
+    subtitle = "The perfect cavity is left behind. (Camera tilted up to view inside).";
+  }
+
+  // Header Background
+  fill(255, 255, 255, 230);
+  noStroke();
+  rect(0, 0, width, 90);
+
+  // Text
+  fill(20);
+  textAlign(CENTER, TOP);
+  textSize(28);
+  text(title, width / 2, 15);
+  
+  fill(70);
+  textSize(18);
+  text(subtitle, width / 2, 55);
+
+  // Button Logic
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+  boolean over = mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH;
+
+  fill(over ? 220 : 255);
+  stroke(120);
+  strokeWeight(2);
+  rect(bx, by, btnW, btnH, 8);
+
+  fill(30);
+  textAlign(CENTER, CENTER);
+  textSize(22);
+
+  String btnText = (state == FINAL_CAVITY) ? "RESTART" : "NEXT STEP";
+  text(btnText, bx + btnW / 2, by + btnH / 2 - 3);
+
+  // Footer text
+  fill(90);
+  textAlign(LEFT, BOTTOM);
+  textSize(16);
+  text("Drag screen = Rotate 3D view", 20, height - 15);
+}
+
+// ================================================================
+// INPUT HANDLING
+// ================================================================
+void mouseDragged() {
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+
+  // Prevent rotation when touching the UI button
+  if (!(mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+    
+    // Free rotation unless the auto-tilt is trying to lock the view
+    if (state != FINAL_CAVITY) {
+      targetRotX = rotX; 
+    }
+  }
+}
+
+void mouseReleased() {
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+
+  if (mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH) {
+    
+    if (state == FINAL_CAVITY) {
+      resetSimulation();
+      return;
+    }
+    
+    state++;
+
+    // Trigger state-specific logic
+    if (state == PLACE_FLASK) {
+      targetFlaskY = 0; // Drops flush with board
+    } else if (state == FILL_SAND) {
+      targetSandFill = 1.0;
+    } else if (state == REMOVE_BOARD) {
+      targetBoardY = 300; // Drop out of view
+    } else if (state == REMOVE_PATTERN) {
+      targetPatternY = 300; // Drop out of view
+    } else if (state == FINAL_CAVITY) {
+      targetRotX = PI / 5.0; // Auto-tilt camera upwards to see inside the cavity
+    }
+  }
+}
+
+void resetSimulation() {
+  state = SETUP_BOARD;
+  
+  flaskY = -300;
+  targetFlaskY = -300;
+  
+  sandFill = 0.0;
+  targetSandFill = 0.0;
+  
+  boardY = 0;
+  targetBoardY = 0;
+  
+  patternY = 0;
+  targetPatternY = 0;
+  
+  rotX = -PI / 6.0;
+  targetRotX = -PI / 6.0;
+  rotY = PI / 4.0;
+}
