@@ -1,0 +1,296 @@
+Loose piece pattern 
+
+
+// 3D Sand Casting Simulation - Loose Piece Pattern
+// Features: 3-Piece Assembly (Central V-Wedge Key + Two Dovetail Loose Pieces)
+// Complete APDE Processing Source Code
+
+int state = 0;
+
+// Animation Variables for smooth transitions
+float animPatternY = -600, targPatternY = -600;
+float animLooseLx = 0, targLooseLx = 0;
+float animLooseLy = -600, targLooseLy = -600;
+float animLooseRx = 0, targLooseRx = 0;
+float animLooseRy = -600, targLooseRy = -600;
+
+// Sand visibility state
+boolean sandVisible = false;
+
+// Camera and Interaction
+float rotX = -PI/6;
+float rotY = PI/5;
+float btnW = 240, btnH = 50;
+
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  smooth(4);
+}
+
+void draw() {
+  background(240);
+  
+  // Setup 3D Lighting for depth perception
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(130, 130, 130);
+  directionalLight(255, 255, 255, -0.5, 1, -0.5);
+
+  pushMatrix();
+  // Center scene
+  translate(width/2, height/2 + 20, -100);
+  
+  // Apply finger drag rotation
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // Smooth Animations
+  animPatternY = lerp(animPatternY, targPatternY, 0.1);
+  animLooseLx  = lerp(animLooseLx, targLooseLx, 0.1);
+  animLooseLy  = lerp(animLooseLy, targLooseLy, 0.1);
+  animLooseRx  = lerp(animLooseRx, targLooseRx, 0.1);
+  animLooseRy  = lerp(animLooseRy, targLooseRy, 0.1);
+
+  // --- 1. FLASK & SAND ---
+  drawFlask(color(240, 160, 30)); 
+  if (sandVisible) {
+    drawSandWithCavity();
+  }
+
+  // --- 2. MAIN PATTERN (Central V-Shape Wedge) ---
+  if (state >= 1 && state < 7) {
+    pushMatrix();
+    translate(0, animPatternY, 0);
+    drawMainPattern(); 
+    popMatrix();
+  }
+
+  // --- 3. LOOSE PIECES (Yellow Dovetail Wedges) ---
+  if (state >= 1 && state < 7) {
+    // Left Loose Piece 
+    pushMatrix();
+    translate(animLooseLx, animLooseLy, 0); 
+    drawLeftLoosePiece();
+    popMatrix();
+
+    // Right Loose Piece
+    pushMatrix();
+    translate(animLooseRx, animLooseRy, 0);
+    drawRightLoosePiece();
+    popMatrix();
+  }
+
+  popMatrix(); // End 3D Space
+
+  // --- UI Overlay (2D) ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  
+  fill(40);
+  textSize(24);
+  textAlign(CENTER, TOP);
+  String msg = "";
+  if (state == 0) msg = "Step 1: Empty Flask";
+  if (state == 1) msg = "Step 2: Place Pattern Assembly (Central Wedge + Yellow Loose Pieces)";
+  if (state == 2) msg = "Step 3: Pour & Ram Sand. (The assembly creates a dovetail undercut)";
+  if (state == 3) msg = "Step 4: Withdraw Central V-Wedge.\n(It slides out easily because it tapers inward, leaving pieces trapped)";
+  if (state == 4) msg = "Step 5: Push Loose Pieces INWARD into the empty V-space to clear sand overhang.";
+  if (state == 5) msg = "Step 6: Withdraw Loose Pieces vertically.";
+  if (state == 6) msg = "Step 7: Finished Mold Cavity with Dovetail Undercut\n(Drag screen to inspect inside)";
+  text(msg, width/2, 20);
+  
+  // Next Button
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  stroke(120); strokeWeight(2);
+  fill(mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH ? 220 : 245);
+  rect(btnX, btnY, btnW, btnH, 10);
+  
+  fill(0); textSize(22); textAlign(CENTER, CENTER);
+  text(state == 6 ? "Restart Process" : "Next Step", btnX + btnW/2, btnY + btnH/2 - 2);
+}
+
+// ==========================================
+// GEOMETRY & SIMULATION LOGIC
+// ==========================================
+
+void drawFlask(color c) {
+  noFill();
+  strokeWeight(4);
+  stroke(c);
+  // Align flask bounds with sand block
+  pushMatrix();
+  translate(0, 75, 0); // Center of flask height
+  box(400, 150, 200); 
+  
+  // Side alignment flanges 
+  fill(c); noStroke();
+  pushMatrix(); translate(-210, 0, 0); box(20, 80, 40); popMatrix();
+  pushMatrix(); translate(210, 0, 0); box(20, 80, 40); popMatrix();
+  popMatrix();
+}
+
+void drawMainPattern() {
+  fill(150, 160, 170); // Aluminum pattern color
+  noStroke();
+  float z1 = -100, z2 = 100;
+  
+  // Handle / Base Block (sits above the sand line)
+  pushMatrix();
+  translate(0, -20, 0);
+  box(300, 40, 200); // X: -150 to 150, Y: -40 to 0
+  popMatrix();
+
+  // Central Wedge (The V-Shape pointing downwards)
+  // Front Face
+  beginShape(); vertex(-80,0,z2); vertex(80,0,z2); vertex(50,100,z2); vertex(-50,100,z2); endShape(CLOSE);
+  // Back Face
+  beginShape(); vertex(-80,0,z1); vertex(80,0,z1); vertex(50,100,z1); vertex(-50,100,z1); endShape(CLOSE);
+  
+  // Outer Faces
+  drawQuadHorizontal(-50, 50, 100, z1, z2);  // Bottom face
+  drawQuad(-80, 0, -50, 100, z1, z2);        // Left slanted face
+  drawQuad(80, 0, 50, 100, z1, z2);          // Right slanted face
+}
+
+void drawLeftLoosePiece() {
+  fill(220, 200, 30); // Yellow Loose Piece
+  noStroke();
+  float z1 = -100, z2 = 100;
+  
+  // Front face
+  beginShape(); vertex(-100,0,z2); vertex(-80,0,z2); vertex(-50,100,z2); vertex(-140,100,z2); endShape(CLOSE);
+  // Back face
+  beginShape(); vertex(-100,0,z1); vertex(-80,0,z1); vertex(-50,100,z1); vertex(-140,100,z1); endShape(CLOSE);
+  
+  // Connecting Faces
+  drawQuadHorizontal(-100, -80, 0, z1, z2);  // Top face
+  drawQuadHorizontal(-140, -50, 100, z1, z2); // Bottom face
+  drawQuad(-100, 0, -140, 100, z1, z2);      // Outer slanted face (Forms the dovetail)
+  drawQuad(-80, 0, -50, 100, z1, z2);        // Inner slanted face (Touches central wedge)
+}
+
+void drawRightLoosePiece() {
+  fill(220, 200, 30); // Yellow Loose Piece
+  noStroke();
+  float z1 = -100, z2 = 100;
+  
+  // Front face
+  beginShape(); vertex(80,0,z2); vertex(100,0,z2); vertex(140,100,z2); vertex(50,100,z2); endShape(CLOSE);
+  // Back face
+  beginShape(); vertex(80,0,z1); vertex(100,0,z1); vertex(140,100,z1); vertex(50,100,z1); endShape(CLOSE);
+  
+  // Connecting Faces
+  drawQuadHorizontal(80, 100, 0, z1, z2);    // Top face
+  drawQuadHorizontal(50, 140, 100, z1, z2);  // Bottom face
+  drawQuad(100, 0, 140, 100, z1, z2);        // Outer slanted face (Forms the dovetail)
+  drawQuad(80, 0, 50, 100, z1, z2);          // Inner slanted face (Touches central wedge)
+}
+
+// Reusable drawing helpers mapping exactly to quad planes
+void drawQuad(float x1, float y1, float x2, float y2, float z1, float z2) {
+  beginShape(QUADS); vertex(x1, y1, z1); vertex(x1, y1, z2); vertex(x2, y2, z2); vertex(x2, y2, z1); endShape();
+}
+void drawQuadHorizontal(float x1, float x2, float y, float z1, float z2) {
+  beginShape(QUADS); vertex(x1, y, z1); vertex(x2, y, z1); vertex(x2, y, z2); vertex(x1, y, z2); endShape();
+}
+
+void drawSandWithCavity() {
+  float z1 = -100, z2 = 100; 
+  noStroke();
+
+  // --- OUTER SAND BLOCK ---
+  fill(220, 140, 80); 
+  
+  // Front Face (with dovetail hole cut out mapping the exact cavity)
+  beginShape();
+  vertex(-200, 0, z2); vertex(200, 0, z2); vertex(200, 150, z2); vertex(-200, 150, z2);
+  beginContour();
+  vertex(-100, 0, z2); vertex(-140, 100, z2); vertex(140, 100, z2); vertex(100, 0, z2); // CCW Cutout
+  endContour();
+  endShape(CLOSE);
+
+  // Back Face
+  beginShape();
+  vertex(-200, 0, z1); vertex(200, 0, z1); vertex(200, 150, z1); vertex(-200, 150, z1);
+  beginContour();
+  vertex(-100, 0, z1); vertex(-140, 100, z1); vertex(140, 100, z1); vertex(100, 0, z1);
+  endContour();
+  endShape(CLOSE);
+
+  // Outer Box Boundaries 
+  drawQuad(-200, 0, -200, 150, z1, z2); // Left 
+  drawQuad(200, 0, 200, 150, z1, z2);   // Right 
+  drawQuadHorizontal(-200, 200, 150, z1, z2); // Bottom 
+  drawQuadHorizontal(-200, -100, 0, z1, z2); // Top Left Sand 
+  drawQuadHorizontal(100, 200, 0, z1, z2);   // Top Right Sand 
+
+  // --- INNER CAVITY WALLS (Negative Dovetail Space) ---
+  fill(180, 100, 50); // Darker sand color for interior shadowing
+
+  drawQuad(-100, 0, -140, 100, z1, z2);       // Left undercut wall
+  drawQuad(100, 0, 140, 100, z1, z2);         // Right undercut wall
+  drawQuadHorizontal(-140, 140, 100, z1, z2); // Deep cavity floor
+}
+
+// ==========================================
+// INTERACTION EVENTS
+// ==========================================
+
+void mouseDragged() {
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  if (!(mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+void mouseReleased() {
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  if (mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH) {
+    state++;
+    if (state > 6) state = 0; 
+    
+    if (state == 0) {
+      targPatternY = -600; 
+      targLooseLx = 0; targLooseLy = -600; 
+      targLooseRx = 0; targLooseRy = -600;
+      sandVisible = false;
+    } 
+    else if (state == 1) {
+      // Assemble pattern and loose pieces in flask
+      targPatternY = 0; 
+      targLooseLy = 0; targLooseRy = 0;
+    } 
+    else if (state == 2) {
+      // Pour Sand (Surface perfectly matches the flat top)
+      sandVisible = true;
+    } 
+    else if (state == 3) {
+      // Withdraw Main V-Wedge Pattern straight up (Sides remain locked under sand overhang)
+      targPatternY = -350; 
+    } 
+    else if (state == 4) {
+      // Slide loose pieces INWARD into the newly empty V-space to clear the sand undercut
+      targLooseLx = 45;  // Slide left yellow piece inwards
+      targLooseRx = -45; // Slide right yellow piece inwards
+    } 
+    else if (state == 5) {
+      // Safely lift the loose pieces straight up now that they cleared the overhang
+      targLooseLy = -350;   
+      targLooseRy = -350; 
+    } 
+    else if (state == 6) {
+      // Clean view of the final completely empty cavity
+      targPatternY = -800;
+      targLooseLy = -800;
+      targLooseRy = -800;
+    }
+  }
+}
