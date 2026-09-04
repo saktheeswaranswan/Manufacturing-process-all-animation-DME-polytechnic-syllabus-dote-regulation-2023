@@ -1,0 +1,1993 @@
+//Sweep piece pattern mould cavity sweep piece pattern mould cavity
+
+
+// ================================================================
+// SWEEP PIECE / SWEEP PATTERN CASTING SIMULATION
+// APDE / PROCESSING ANDROID MODE - P3D
+//
+// COMPLETE 3D SEQUENCE:
+//
+// 0  Empty Flask
+// 1  Sand Packed
+// 2  Sweep Pattern Inserted
+// 3  Sweep Pattern Rotates 0° -> 360° and Carves Cavity
+// 4  Sweep Pattern Withdraws
+// 5  Finished Symmetrical Mold Cavity
+//
+// Drag screen = rotate model
+// Next Step = advance process
+// During Step 4, the cavity remains visible
+// ================================================================
+
+
+// ================================================================
+// GLOBAL STATE
+// ================================================================
+
+int state = 0;
+
+// ------------------------------------------------
+// Animation
+// ------------------------------------------------
+
+float patternY = -520;
+float targetPatternY = -520;
+
+float sweepAngle = 0.0;
+float sweepStartAngle = 0.0;
+
+boolean sweeping = false;
+boolean sweepFinished = false;
+
+int sweepStartTime = 0;
+
+// Sweep duration in milliseconds
+int sweepDuration = 8000;
+
+
+// ================================================================
+// CAMERA
+// ================================================================
+
+float rotX = -PI/5.5;
+float rotY = PI/4;
+
+float cameraDistance = -120;
+
+
+// ================================================================
+// BUTTON
+// ================================================================
+
+float btnW = 260;
+float btnH = 55;
+
+
+// ================================================================
+// COLOURS
+// ================================================================
+
+int flaskColor;
+
+int sandColor;
+int sandDarkColor;
+int sandCutColor;
+int sandHighlightColor;
+
+int patternColor;
+int patternEdgeColor;
+
+int shaftColor;
+
+
+// ================================================================
+// SWEEP PROFILE
+//
+// Radius r
+// Vertical coordinate y
+//
+// This profile is revolved around the vertical axis.
+//
+//          r = 120
+//          |------ opening
+// y=-60    *
+//          |
+// y=-20    *
+//          |       r=80
+// y=30     *
+//          |--
+// y=60     *
+//          |    r=60
+// y=60     *
+//          |
+// y=90     *-----------> axis r=0
+//
+// ================================================================
+
+float[] pr = {
+  120,
+  120,
+   80,
+   80,
+   60,
+   60,
+    0
+};
+
+float[] py = {
+  -60,
+  -20,
+   30,
+   60,
+   60,
+   90,
+   90
+};
+
+int pLen = 7;
+
+
+// ================================================================
+// SAND / FLASK DIMENSIONS
+// ================================================================
+
+float sandLeft   = -200;
+float sandRight  =  200;
+
+float sandFront  = -200;
+float sandBack   =  200;
+
+float sandTop    = -60;
+float sandBottom = 130;
+
+float cavityMaxRadius = 120;
+
+
+// ================================================================
+// SETUP
+// ================================================================
+
+void setup() {
+
+  size(displayWidth, displayHeight, P3D);
+
+  orientation(LANDSCAPE);
+
+  smooth(4);
+
+  // Colours
+  flaskColor         = color(190, 115, 40);
+
+  sandColor         = color(210, 135, 75);
+  sandDarkColor     = color(165, 90, 45);
+  sandCutColor      = color(180, 100, 50);
+  sandHighlightColor= color(235, 155, 90);
+
+  patternColor      = color(155, 160, 170);
+  patternEdgeColor  = color(80, 85, 90);
+
+  shaftColor        = color(70, 70, 70);
+}
+
+
+// ================================================================
+// DRAW
+// ================================================================
+
+void draw() {
+
+  background(238);
+
+  hint(ENABLE_DEPTH_TEST);
+
+  lights();
+
+  ambientLight(
+    125,
+    125,
+    125
+  );
+
+  directionalLight(
+    255,
+    255,
+    255,
+    -0.5,
+    1.0,
+    -0.4
+  );
+
+  // ------------------------------------------------
+  // UPDATE ANIMATIONS
+  // ------------------------------------------------
+
+  patternY = lerp(
+    patternY,
+    targetPatternY,
+    0.10
+  );
+
+
+  // ------------------------------------------------
+  // AUTOMATIC SWEEP
+  // ------------------------------------------------
+
+  if (sweeping) {
+
+    float elapsed =
+      millis() - sweepStartTime;
+
+    float progress =
+      constrain(
+        elapsed / float(sweepDuration),
+        0,
+        1
+      );
+
+    // Smooth step
+    float smoothProgress =
+      progress * progress *
+      (3.0 - 2.0 * progress);
+
+    sweepAngle =
+      sweepStartAngle +
+      (TWO_PI - sweepStartAngle) *
+      smoothProgress;
+
+    if (progress >= 1.0) {
+
+      sweepAngle = TWO_PI;
+
+      sweeping = false;
+      sweepFinished = true;
+    }
+  }
+
+
+  // ==============================================================
+  // 3D SCENE
+  // ==============================================================
+
+  pushMatrix();
+
+  translate(
+    width / 2,
+    height / 2 + 30,
+    cameraDistance
+  );
+
+  rotateX(rotX);
+  rotateY(rotY);
+
+
+  // ------------------------------------------------
+  // SAND
+  // ------------------------------------------------
+
+  if (state >= 1) {
+
+    drawSandBed();
+  }
+
+
+  // ------------------------------------------------
+  // FLASK
+  // ------------------------------------------------
+
+  drawFlask();
+
+
+  // ------------------------------------------------
+  // SWEEP TOOL
+  // ------------------------------------------------
+
+  if (state >= 2 && state <= 4) {
+
+    pushMatrix();
+
+    translate(
+      0,
+      patternY,
+      0
+    );
+
+    // During sweep, pattern rotates
+    if (state == 3) {
+
+      rotateY(-sweepAngle);
+    }
+
+    drawSweepPattern();
+
+    popMatrix();
+  }
+
+
+  // ------------------------------------------------
+  // CENTER AXIS INDICATOR
+  // ------------------------------------------------
+
+  if (state >= 2) {
+
+    drawCenterAxis();
+  }
+
+
+  popMatrix();
+
+
+  // ==============================================================
+  // 2D UI
+  // ==============================================================
+
+  camera();
+
+  hint(DISABLE_DEPTH_TEST);
+
+  noLights();
+
+  drawUI();
+}
+
+
+// ================================================================
+// FLASK
+// ================================================================
+
+void drawFlask() {
+
+  pushMatrix();
+
+  translate(
+    0,
+    30,
+    0
+  );
+
+
+  // ---------------------------------------------
+  // Flask outline
+  // ---------------------------------------------
+
+  noFill();
+
+  stroke(flaskColor);
+
+  strokeWeight(4);
+
+  box(
+    420,
+    200,
+    420
+  );
+
+
+  // ---------------------------------------------
+  // Flask side flanges
+  // ---------------------------------------------
+
+  noStroke();
+
+  fill(flaskColor);
+
+
+  pushMatrix();
+
+  translate(
+    -220,
+    0,
+    0
+  );
+
+  box(
+    25,
+    90,
+    50
+  );
+
+  popMatrix();
+
+
+  pushMatrix();
+
+  translate(
+    220,
+    0,
+    0
+  );
+
+  box(
+    25,
+    90,
+    50
+  );
+
+  popMatrix();
+
+
+  popMatrix();
+}
+
+
+// ================================================================
+// COMPLETE SAND BED
+// ================================================================
+
+void drawSandBed() {
+
+  noStroke();
+
+
+  // ==============================================================
+  // OUTER SIDE WALLS
+  // ==============================================================
+
+  fill(sandColor);
+
+
+  // Left wall
+  beginShape(QUADS);
+
+  vertex(
+    sandLeft,
+    sandTop,
+    sandFront
+  );
+
+  vertex(
+    sandLeft,
+    sandBottom,
+    sandFront
+  );
+
+  vertex(
+    sandLeft,
+    sandBottom,
+    sandBack
+  );
+
+  vertex(
+    sandLeft,
+    sandTop,
+    sandBack
+  );
+
+  endShape();
+
+
+  // Right wall
+  beginShape(QUADS);
+
+  vertex(
+    sandRight,
+    sandTop,
+    sandFront
+  );
+
+  vertex(
+    sandRight,
+    sandTop,
+    sandBack
+  );
+
+  vertex(
+    sandRight,
+    sandBottom,
+    sandBack
+  );
+
+  vertex(
+    sandRight,
+    sandBottom,
+    sandFront
+  );
+
+  endShape();
+
+
+  // Front wall
+  beginShape(QUADS);
+
+  vertex(
+    sandLeft,
+    sandTop,
+    sandFront
+  );
+
+  vertex(
+    sandRight,
+    sandTop,
+    sandFront
+  );
+
+  vertex(
+    sandRight,
+    sandBottom,
+    sandFront
+  );
+
+  vertex(
+    sandLeft,
+    sandBottom,
+    sandFront
+  );
+
+  endShape();
+
+
+  // Back wall
+  beginShape(QUADS);
+
+  vertex(
+    sandRight,
+    sandTop,
+    sandBack
+  );
+
+  vertex(
+    sandLeft,
+    sandTop,
+    sandBack
+  );
+
+  vertex(
+    sandLeft,
+    sandBottom,
+    sandBack
+  );
+
+  vertex(
+    sandRight,
+    sandBottom,
+    sandBack
+  );
+
+  endShape();
+
+
+  // Bottom
+  fill(sandDarkColor);
+
+  beginShape(QUADS);
+
+  vertex(
+    sandLeft,
+    sandBottom,
+    sandFront
+  );
+
+  vertex(
+    sandRight,
+    sandBottom,
+    sandFront
+  );
+
+  vertex(
+    sandRight,
+    sandBottom,
+    sandBack
+  );
+
+  vertex(
+    sandLeft,
+    sandBottom,
+    sandBack
+  );
+
+  endShape();
+
+
+  // ==============================================================
+  // TOP OF SAND
+  // ==============================================================
+
+  drawTopSandSurface();
+
+
+  // ==============================================================
+  // DURING SWEEP
+  //
+  // Draw the portion of sand that has NOT YET BEEN CUT.
+  // ==============================================================
+
+  if (state == 3 &&
+      sweepAngle > 0.001 &&
+      sweepAngle < TWO_PI - 0.001) {
+
+    drawUncutCoreSector(
+      sweepAngle,
+      TWO_PI
+    );
+  }
+
+
+  // ==============================================================
+  // FINISHED / CURRENT CAVITY WALL
+  // ==============================================================
+
+  if (state >= 3 &&
+      sweepAngle > 0.001) {
+
+    drawRevolvedCavity(
+      sweepAngle
+    );
+  }
+}
+
+
+// ================================================================
+// TOP SAND SURFACE
+//
+// Before cutting:
+//
+//     FULL SQUARE
+//
+// During cutting:
+//
+//     SQUARE OUTSIDE CAVITY
+//     +
+//     REMAINING UNCUT CIRCULAR SECTOR
+//
+// After 360°:
+//
+//     COMPLETE CIRCULAR OPENING
+// ================================================================
+
+void drawTopSandSurface() {
+
+  if (state < 3 ||
+      sweepAngle < 0.001) {
+
+    // ------------------------------------------------
+    // Completely flat sand
+    // ------------------------------------------------
+
+    fill(sandColor);
+
+    beginShape(QUADS);
+
+    vertex(
+      sandLeft,
+      sandTop,
+      sandFront
+    );
+
+    vertex(
+      sandRight,
+      sandTop,
+      sandFront
+    );
+
+    vertex(
+      sandRight,
+      sandTop,
+      sandBack
+    );
+
+    vertex(
+      sandLeft,
+      sandTop,
+      sandBack
+    );
+
+    endShape();
+
+    return;
+  }
+
+
+  // ------------------------------------------------
+  // Square top with circular cavity opening
+  // ------------------------------------------------
+
+  fill(sandColor);
+
+
+  beginShape();
+
+  vertex(
+    sandLeft,
+    sandTop,
+    sandBack
+  );
+
+  vertex(
+    sandRight,
+    sandTop,
+    sandBack
+  );
+
+  vertex(
+    sandRight,
+    sandTop,
+    sandFront
+  );
+
+  vertex(
+    sandLeft,
+    sandTop,
+    sandFront
+  );
+
+
+  // Circular hole
+  beginContour();
+
+
+  int n = 100;
+
+
+  for (int i = 0; i < n; i++) {
+
+    float a =
+      TWO_PI -
+      (TWO_PI * i / float(n));
+
+    vertex(
+      cavityMaxRadius * cos(a),
+      sandTop - 0.2,
+      cavityMaxRadius * sin(a)
+    );
+  }
+
+
+  endContour();
+
+  endShape(CLOSE);
+
+
+  // ------------------------------------------------
+  // Remaining uncut circular sector on top
+  // ------------------------------------------------
+
+  if (sweepAngle < TWO_PI - 0.001) {
+
+    fill(sandColor);
+
+    beginShape(TRIANGLE_FAN);
+
+    vertex(
+      0,
+      sandTop - 0.5,
+      0
+    );
+
+    int segments =
+      max(
+        4,
+        int(
+          80 *
+          (TWO_PI - sweepAngle) /
+          TWO_PI
+        )
+      );
+
+
+    for (int i = 0; i <= segments; i++) {
+
+      float a =
+        sweepAngle +
+        (TWO_PI - sweepAngle) *
+        i / float(segments);
+
+      vertex(
+        cavityMaxRadius * cos(a),
+        sandTop - 0.5,
+        cavityMaxRadius * sin(a)
+      );
+    }
+
+    endShape();
+  }
+}
+
+
+// ================================================================
+// UNCUT SAND CORE SECTOR
+//
+// This is the most important improvement.
+//
+// The still-unremoved sand inside the future cavity is modeled
+// as a real 3D sector using the sweep profile.
+//
+// Example:
+//
+// 0° ----------- sweep front
+// |████████████|
+// |████████████|  <- still sand
+// |████████████|
+// 360° --------- original material
+//
+// As sweepAngle increases, the sand sector becomes smaller.
+// ==============================================================
+
+void drawUncutCoreSector(
+  float aStart,
+  float aEnd
+) {
+
+  fill(sandHighlightColor);
+
+  noStroke();
+
+
+  // ------------------------------------------------
+  // Create revolved sector from the profile polygon
+  // ------------------------------------------------
+
+  int crossLen = pLen + 2;
+
+  float[] cx =
+    new float[crossLen];
+
+  float[] cy =
+    new float[crossLen];
+
+
+  // First point = axis at top
+  cx[0] = 0;
+  cy[0] = sandTop;
+
+
+  // Sweep profile
+  for (int i = 0; i < pLen; i++) {
+
+    cx[i + 1] = pr[i];
+    cy[i + 1] = py[i];
+  }
+
+
+  // Last point = axis at bottom
+  cx[crossLen - 1] = 0;
+  cy[crossLen - 1] = py[pLen - 1];
+
+
+  // ------------------------------------------------
+  // Surface for every cross-section edge
+  // ------------------------------------------------
+
+  int angleSteps =
+    max(
+      4,
+      int(
+        70 *
+        (aEnd - aStart) /
+        TWO_PI
+      )
+    );
+
+
+  for (int j = 0; j < crossLen - 1; j++) {
+
+    beginShape(QUAD_STRIP);
+
+    for (int i = 0; i <= angleSteps; i++) {
+
+      float a =
+        aStart +
+        (aEnd - aStart) *
+        i / float(angleSteps);
+
+
+      float c = cos(a);
+      float s = sin(a);
+
+
+      vertex(
+        cx[j] * c,
+        cy[j],
+        cx[j] * s
+      );
+
+      vertex(
+        cx[j + 1] * c,
+        cy[j + 1],
+        cx[j + 1] * s
+      );
+    }
+
+    endShape();
+  }
+
+
+  // ------------------------------------------------
+  // CUTTING FACE AT THE MOVING SWEEP ANGLE
+  // ------------------------------------------------
+
+  drawProfileCap(
+    aStart,
+    sandHighlightColor
+  );
+}
+
+
+// ================================================================
+// REVOLVED CAVITY
+//
+// Generates the actual mold cavity by sweeping the profile
+// through the already-cut angle.
+// ================================================================
+
+void drawRevolvedCavity(
+  float angleLimit
+) {
+
+  int angularSteps =
+    max(
+      8,
+      int(
+        140 *
+        angleLimit /
+        TWO_PI
+      )
+    );
+
+
+  // ------------------------------------------------
+  // Profile walls
+  // ------------------------------------------------
+
+  for (int j = 0; j < pLen - 1; j++) {
+
+    beginShape(QUAD_STRIP);
+
+    // Slightly vary shading by depth
+    if (j <= 1) {
+
+      fill(
+        sandCutColor
+      );
+
+    } else {
+
+      fill(
+        sandDarkColor
+      );
+    }
+
+
+    for (int i = 0;
+         i <= angularSteps;
+         i++) {
+
+      float a =
+        angleLimit *
+        i / float(angularSteps);
+
+
+      float c = cos(a);
+      float s = sin(a);
+
+
+      vertex(
+        pr[j] * c,
+        py[j],
+        pr[j] * s
+      );
+
+      vertex(
+        pr[j + 1] * c,
+        py[j + 1],
+        pr[j + 1] * s
+      );
+    }
+
+    endShape();
+  }
+
+
+  // ------------------------------------------------
+  // Add a darker bottom face
+  // ------------------------------------------------
+
+  drawCavityBottom(
+    angleLimit
+  );
+
+
+  // ------------------------------------------------
+  // Moving cutting face
+  // ------------------------------------------------
+
+  if (angleLimit < TWO_PI - 0.001) {
+
+    drawProfileCap(
+      angleLimit,
+      sandHighlightColor
+    );
+  }
+}
+
+
+// ================================================================
+// PROFILE CAP
+//
+// Shows the vertical cross-section at the instantaneous
+// sweep position. This makes the cutting action easy to see.
+// ================================================================
+
+void drawProfileCap(
+  float angle,
+  int capColor
+) {
+
+  fill(capColor);
+
+  noStroke();
+
+  beginShape();
+
+
+  // Axis at top
+  vertex(
+    0,
+    sandTop - 0.2,
+    0
+  );
+
+
+  // Profile
+  for (int i = 0; i < pLen; i++) {
+
+    vertex(
+      pr[i] * cos(angle),
+      py[i],
+      pr[i] * sin(angle)
+    );
+  }
+
+
+  // Return along axis
+  vertex(
+    0,
+    py[pLen - 1],
+    0
+  );
+
+
+  endShape(CLOSE);
+}
+
+
+// ================================================================
+// CAVITY BOTTOM
+//
+// At y = 90 the profile goes from radius 60 to radius 0,
+// producing the flat bottom of the cavity.
+// ================================================================
+
+void drawCavityBottom(
+  float angleLimit
+) {
+
+  if (angleLimit < 0.001) {
+    return;
+  }
+
+
+  fill(
+    sandDarkColor
+  );
+
+  noStroke();
+
+
+  int steps =
+    max(
+      8,
+      int(
+        100 *
+        angleLimit /
+        TWO_PI
+      )
+    );
+
+
+  beginShape(TRIANGLE_STRIP);
+
+
+  for (int i = 0; i <= steps; i++) {
+
+    float a =
+      angleLimit *
+      i / float(steps);
+
+
+    float c = cos(a);
+    float s = sin(a);
+
+
+    // Center
+    vertex(
+      0,
+      90,
+      0
+    );
+
+    // Radius 60
+    vertex(
+      60 * c,
+      90,
+      60 * s
+    );
+  }
+
+
+  endShape();
+}
+
+
+// ================================================================
+// SWEEP PATTERN
+//
+// Central shaft + profiled board + brackets
+// ================================================================
+
+void drawSweepPattern() {
+
+  pushMatrix();
+
+
+  // ==============================================================
+  // CENTRAL SHAFT
+  // ==============================================================
+
+  fill(shaftColor);
+
+  noStroke();
+
+
+  pushMatrix();
+
+  translate(
+    0,
+    10,
+    0
+  );
+
+  drawCylinder(
+    9,
+    230,
+    32
+  );
+
+  popMatrix();
+
+
+  // ==============================================================
+  // PROFILE BOARD
+  // ==============================================================
+
+  float thickness = 5;
+
+
+  fill(patternColor);
+
+  stroke(patternEdgeColor);
+
+  strokeWeight(1.5);
+
+
+  // ------------------------------------------------
+  // FRONT SIDE
+  // ------------------------------------------------
+
+  beginShape();
+
+  vertex(
+    8,
+    -80,
+    thickness
+  );
+
+  vertex(
+    120,
+    -80,
+    thickness
+  );
+
+
+  for (int i = 0; i < pLen; i++) {
+
+    vertex(
+      pr[i],
+      py[i],
+      thickness
+    );
+  }
+
+
+  vertex(
+    8,
+    90,
+    thickness
+  );
+
+  endShape(CLOSE);
+
+
+  // ------------------------------------------------
+  // BACK SIDE
+  // ------------------------------------------------
+
+  beginShape();
+
+  vertex(
+    8,
+    -80,
+    -thickness
+  );
+
+  vertex(
+    120,
+    -80,
+    -thickness
+  );
+
+
+  for (int i = 0; i < pLen; i++) {
+
+    vertex(
+      pr[i],
+      py[i],
+      -thickness
+    );
+  }
+
+
+  vertex(
+    8,
+    90,
+    -thickness
+  );
+
+  endShape(CLOSE);
+
+
+  // ------------------------------------------------
+  // PROFILE EDGE
+  // ------------------------------------------------
+
+  beginShape(QUAD_STRIP);
+
+
+  for (int i = 0; i < pLen; i++) {
+
+    vertex(
+      pr[i],
+      py[i],
+      thickness
+    );
+
+    vertex(
+      pr[i],
+      py[i],
+      -thickness
+    );
+  }
+
+
+  endShape();
+
+
+  // ------------------------------------------------
+  // TOP STRAIGHT EDGE
+  // ------------------------------------------------
+
+  beginShape(QUAD_STRIP);
+
+  vertex(
+    8,
+    -80,
+    thickness
+  );
+
+  vertex(
+    8,
+    -80,
+    -thickness
+  );
+
+  vertex(
+    120,
+    -80,
+    thickness
+  );
+
+  vertex(
+    120,
+    -80,
+    -thickness
+  );
+
+  endShape();
+
+
+  // ------------------------------------------------
+  // BRACKETS
+  // ------------------------------------------------
+
+  noStroke();
+
+  fill(
+    patternEdgeColor
+  );
+
+
+  pushMatrix();
+
+  translate(
+    15,
+    -40,
+    0
+  );
+
+  box(
+    25,
+    11,
+    16
+  );
+
+  popMatrix();
+
+
+  pushMatrix();
+
+  translate(
+    15,
+    30,
+    0
+  );
+
+  box(
+    25,
+    11,
+    16
+  );
+
+  popMatrix();
+
+
+  popMatrix();
+}
+
+
+// ================================================================
+// CYLINDER
+// ================================================================
+
+void drawCylinder(
+  float radius,
+  float height,
+  int sides
+) {
+
+  float step =
+    TWO_PI / sides;
+
+
+  // ------------------------------------------------
+  // Side wall
+  // ------------------------------------------------
+
+  beginShape(QUAD_STRIP);
+
+
+  for (int i = 0; i <= sides; i++) {
+
+    float a =
+      i * step;
+
+
+    float x =
+      radius * cos(a);
+
+    float z =
+      radius * sin(a);
+
+
+    vertex(
+      x,
+      -height / 2,
+      z
+    );
+
+    vertex(
+      x,
+      height / 2,
+      z
+    );
+  }
+
+
+  endShape();
+
+
+  // ------------------------------------------------
+  // Bottom
+  // ------------------------------------------------
+
+  beginShape(TRIANGLE_FAN);
+
+  vertex(
+    0,
+    -height / 2,
+    0
+  );
+
+
+  for (int i = 0; i <= sides; i++) {
+
+    float a =
+      i * step;
+
+
+    vertex(
+      radius * cos(a),
+      -height / 2,
+      radius * sin(a)
+    );
+  }
+
+
+  endShape();
+
+
+  // ------------------------------------------------
+  // Top
+  // ------------------------------------------------
+
+  beginShape(TRIANGLE_FAN);
+
+  vertex(
+    0,
+    height / 2,
+    0
+  );
+
+
+  for (int i = 0; i <= sides; i++) {
+
+    float a =
+      i * step;
+
+
+    vertex(
+      radius * cos(a),
+      height / 2,
+      radius * sin(a)
+    );
+  }
+
+
+  endShape();
+}
+
+
+// ================================================================
+// CENTRAL AXIS
+// ================================================================
+
+void drawCenterAxis() {
+
+  stroke(
+    80,
+    80,
+    80,
+    120
+  );
+
+  strokeWeight(2);
+
+
+  line(
+    0,
+    -110,
+    0,
+    0,
+    120,
+    0
+  );
+
+
+  noStroke();
+}
+
+
+// ================================================================
+// UI
+// ================================================================
+
+void drawUI() {
+
+  String title = "";
+
+  String instruction = "";
+
+
+  // ------------------------------------------------
+  // State text
+  // ------------------------------------------------
+
+  if (state == 0) {
+
+    title =
+      "STEP 1 — EMPTY FLASK";
+
+    instruction =
+      "Place the flask on the moulding table.";
+  }
+
+
+  else if (state == 1) {
+
+    title =
+      "STEP 2 — PACK MOULDING SAND";
+
+    instruction =
+      "The flask is filled and compacted with moulding sand.";
+  }
+
+
+  else if (state == 2) {
+
+    title =
+      "STEP 3 — INSERT SWEEP PATTERN";
+
+    instruction =
+      "Position the sweep pattern at the mould centre.";
+  }
+
+
+  else if (state == 3) {
+
+    title =
+      "STEP 4 — SWEEP 360° AND CARVE";
+
+    if (sweepFinished) {
+
+      instruction =
+        "Complete 360° revolution finished.";
+    }
+
+    else {
+
+      instruction =
+        "The profile is cutting the sand cavity.";
+    }
+  }
+
+
+  else if (state == 4) {
+
+    title =
+      "STEP 5 — WITHDRAW SWEEP PATTERN";
+
+    instruction =
+      "The finished cavity remains inside the sand.";
+  }
+
+
+  else if (state == 5) {
+
+    title =
+      "STEP 6 — FINISHED MOLD CAVITY";
+
+    instruction =
+      "Drag the screen to inspect the symmetrical cavity.";
+  }
+
+
+  // ------------------------------------------------
+  // Header
+  // ------------------------------------------------
+
+  fill(25);
+
+  textAlign(
+    CENTER,
+    TOP
+  );
+
+  textSize(27);
+
+  text(
+    title,
+    width / 2,
+    18
+  );
+
+
+  fill(65);
+
+  textSize(17);
+
+  text(
+    instruction,
+    width / 2,
+    53
+  );
+
+
+  // ------------------------------------------------
+  // Sweep angle display
+  // ------------------------------------------------
+
+  if (state == 3) {
+
+    float degrees =
+      degrees(sweepAngle);
+
+
+    fill(30);
+
+    textSize(18);
+
+    text(
+      "Sweep Angle: " +
+      nf(degrees, 3, 0) +
+      "°",
+      width / 2,
+      80
+    );
+
+
+    // Progress bar
+    float barW = 300;
+    float barH = 14;
+
+    float bx =
+      width / 2 - barW / 2;
+
+    float by = 110;
+
+
+    stroke(100);
+
+    strokeWeight(1);
+
+    fill(220);
+
+    rect(
+      bx,
+      by,
+      barW,
+      barH,
+      7
+    );
+
+
+    noStroke();
+
+    fill(80, 130, 80);
+
+    rect(
+      bx,
+      by,
+      barW *
+      constrain(
+        sweepAngle / TWO_PI,
+        0,
+        1
+      ),
+      barH,
+      7
+    );
+  }
+
+
+  // ------------------------------------------------
+  // Next button
+  // ------------------------------------------------
+
+  float btnX =
+    width / 2 - btnW / 2;
+
+  float btnY =
+    height - 85;
+
+
+  boolean mouseOver =
+    mouseX > btnX &&
+    mouseX < btnX + btnW &&
+    mouseY > btnY &&
+    mouseY < btnY + btnH;
+
+
+  // During automatic sweep, disable button
+  boolean buttonEnabled =
+    !(state == 3 && sweeping);
+
+
+  if (buttonEnabled) {
+
+    fill(
+      mouseOver
+      ? 215
+      : 242
+    );
+
+  }
+
+  else {
+
+    fill(205);
+  }
+
+
+  stroke(110);
+
+  strokeWeight(2);
+
+
+  rect(
+    btnX,
+    btnY,
+    btnW,
+    btnH,
+    12
+  );
+
+
+  fill(20);
+
+  textAlign(
+    CENTER,
+    CENTER
+  );
+
+  textSize(21);
+
+
+  String buttonText;
+
+
+  if (state == 5) {
+
+    buttonText =
+      "RESTART PROCESS";
+  }
+
+  else if (state == 3 && sweeping) {
+
+    buttonText =
+      "SWEEPING...";
+  }
+
+  else {
+
+    buttonText =
+      "NEXT STEP";
+  }
+
+
+  text(
+    buttonText,
+    btnX + btnW / 2,
+    btnY + btnH / 2
+  );
+
+
+  // ------------------------------------------------
+  // Small legend
+  // ------------------------------------------------
+
+  fill(70);
+
+  textAlign(
+    LEFT,
+    BOTTOM
+  );
+
+  textSize(14);
+
+  text(
+    "Drag = Rotate 3D View",
+    15,
+    height - 12
+  );
+}
+
+
+// ================================================================
+// MOUSE DRAG
+// ================================================================
+
+void mouseDragged() {
+
+  float btnX =
+    width / 2 - btnW / 2;
+
+  float btnY =
+    height - 85;
+
+
+  // Do not rotate while dragging button
+  if (!(
+      mouseX > btnX &&
+      mouseX < btnX + btnW &&
+      mouseY > btnY &&
+      mouseY < btnY + btnH
+    )) {
+
+    rotY +=
+      (mouseX - pmouseX) *
+      0.010;
+
+    rotX -=
+      (mouseY - pmouseY) *
+      0.010;
+
+
+    // Prevent camera flipping upside down
+    rotX =
+      constrain(
+        rotX,
+        -PI / 2.1,
+        PI / 2.1
+      );
+  }
+}
+
+
+// ================================================================
+// MOUSE RELEASE
+// ================================================================
+
+void mouseReleased() {
+
+  float btnX =
+    width / 2 - btnW / 2;
+
+  float btnY =
+    height - 85;
+
+
+  boolean clicked =
+    mouseX > btnX &&
+    mouseX < btnX + btnW &&
+    mouseY > btnY &&
+    mouseY < btnY + btnH;
+
+
+  if (!clicked) {
+    return;
+  }
+
+
+  // ------------------------------------------------
+  // Ignore button while automatic sweep is running
+  // ------------------------------------------------
+
+  if (state == 3 && sweeping) {
+    return;
+  }
+
+
+  // ------------------------------------------------
+  // Restart
+  // ------------------------------------------------
+
+  if (state == 5) {
+
+    state = 0;
+
+    patternY = -520;
+    targetPatternY = -520;
+
+    sweepAngle = 0;
+
+    sweepStartAngle = 0;
+
+    sweeping = false;
+
+    sweepFinished = false;
+
+    return;
+  }
+
+
+  // ------------------------------------------------
+  // Advance
+  // ------------------------------------------------
+
+  state++;
+
+
+  // ------------------------------------------------
+  // STEP 1
+  // ------------------------------------------------
+
+  if (state == 1) {
+
+    targetPatternY = -520;
+
+    sweepAngle = 0;
+
+    sweepFinished = false;
+  }
+
+
+  // ------------------------------------------------
+  // STEP 2
+  // ------------------------------------------------
+
+  else if (state == 2) {
+
+    targetPatternY = 0;
+
+    sweepAngle = 0;
+  }
+
+
+  // ------------------------------------------------
+  // STEP 3
+  //
+  // Automatically sweep 0 -> 360°
+  // ------------------------------------------------
+
+  else if (state == 3) {
+
+    targetPatternY = 0;
+
+    sweepStartAngle = 0;
+
+    sweepAngle = 0;
+
+    sweepFinished = false;
+
+    sweeping = true;
+
+    sweepStartTime = millis();
+  }
+
+
+  // ------------------------------------------------
+  // STEP 4
+  // ------------------------------------------------
+
+  else if (state == 4) {
+
+    // Cavity MUST remain complete
+    sweepAngle = TWO_PI;
+
+    sweeping = false;
+
+    sweepFinished = true;
+
+    // Withdraw upward
+    targetPatternY = -520;
+  }
+
+
+  // ------------------------------------------------
+  // STEP 5
+  // ------------------------------------------------
+
+  else if (state == 5) {
+
+    sweepAngle = TWO_PI;
+
+    sweeping = false;
+
+    sweepFinished = true;
+
+    // Keep pattern completely withdrawn
+    targetPatternY = -520;
+  }
+}
+
+
+// ================================================================
+// OPTIONAL KEYBOARD SUPPORT
+// Useful on desktop Processing
+// ================================================================
+
+void keyPressed() {
+
+  if (key == ' ' ||
+      key == ENTER) {
+
+    mouseReleased();
+  }
+}
