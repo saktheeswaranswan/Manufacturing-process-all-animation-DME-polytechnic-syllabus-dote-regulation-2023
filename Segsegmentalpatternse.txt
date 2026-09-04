@@ -1,0 +1,439 @@
+Segmental pattern mould foundry
+
+// ================================================================
+// SEGMENTAL PATTERN - 3D SAND CASTING SIMULATION (TRUE HOLLOW CAVITY)
+// COMPLETE APDE / PROCESSING ANDROID P3D SOURCE CODE
+//
+// Ref: Working principle based on 81802.jpg
+//
+// TOUCH INSTRUCTIONS:
+// Drag screen = rotate 3D model
+// Next Step = advance animation
+// ================================================================
+
+// ================================================================
+// STATE MACHINE
+// ================================================================
+int state = 0;
+
+final int SETUP_BASE      = 0;
+final int PLACE_PATTERN   = 1;
+final int MOLDING_PROCESS = 2; // Loops 6 times
+final int REMOVE_PATTERN  = 3;
+final int FINAL_CAVITY    = 4;
+
+// ================================================================
+// CAMERA & INTERACTION
+// ================================================================
+float rotX = -PI / 4.0;
+float rotY = PI / 4.0;
+float targetRotX = -PI / 4.0; 
+float cameraZ = -500;
+
+float btnW = 320;
+float btnH = 60;
+
+// ================================================================
+// ANIMATION & GEOMETRY VARIABLES
+// ================================================================
+float patternY = -300;
+float targetPatternY = -300;
+float patternAngle = 0;
+float targetPatternAngle = 0;
+
+int currentSegment = 0;
+int maxSegments = 6; 
+
+// Dimensions for True 3D Cavity Generation
+float Y_TOP = 0;        // Top surface of rammed sand
+float Y_BOT = 30;       // Depth of the pattern cavity
+float Y_BASE_BOT = 60;  // Bottom floor of the flask
+
+float R_PIN = 15;       // Central pivot pin
+float R_HUB = 35;       // Outer radius of pattern hub
+float R_IN_RIM = 120;   // Inner radius of wheel rim
+float R_OUT_RIM = 150;  // Outer radius of wheel rim
+float FLASK_SIZE = 340; // Inner dimension of square flask
+float SPOKE_HW = 0;     // Half-width of spoke (calculated in setup)
+
+// ================================================================
+// COLOURS
+// ================================================================
+int colorPattern, colorFlask, colorSand, colorPin;
+
+// ================================================================
+// SETUP
+// ================================================================
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  smooth(4);
+
+  colorPattern = color(240, 190, 40);   
+  colorFlask   = color(110, 115, 120);   
+  colorSand    = color(210, 175, 130);  
+  colorPin     = color(200, 200, 210);  
+  
+  SPOKE_HW = radians(7.5); // Spoke is 15 degrees wide total
+}
+
+// ================================================================
+// MAIN DRAW LOOP
+// ================================================================
+void draw() {
+  background(240, 245, 250);
+
+  updateAnimations();
+
+  // --- 3D SCENE SETUP ---
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(140, 140, 135);
+  directionalLight(255, 245, 230, -1, 1.5, -1); // Strong light to show cavity depth
+
+  pushMatrix();
+  translate(width / 2, height / 2 + 50, cameraZ);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  drawFlaskFrame();
+  drawBaseSand();
+  drawRammedSand(); // Draws the true 3D negative space!
+
+  // Central Pivot Pin
+  if (state < REMOVE_PATTERN) {
+    fill(colorPin);
+    noStroke();
+    pushMatrix();
+    translate(0, (Y_TOP + Y_BOT)/2 - 10, 0); 
+    drawCylinder(R_PIN, 50); 
+    popMatrix();
+  }
+
+  // Segmental Pattern
+  if (state >= PLACE_PATTERN && state <= REMOVE_PATTERN) {
+    pushMatrix();
+    rotateY(patternAngle);
+    drawPatternSegment(patternY);
+    popMatrix();
+  }
+
+  popMatrix();
+
+  // --- 2D UI OVERLAY ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  drawUI();
+}
+
+// ================================================================
+// ANIMATION CONTROLLER
+// ================================================================
+void updateAnimations() {
+  patternY = lerp(patternY, targetPatternY, 0.15);
+  patternAngle = lerp(patternAngle, targetPatternAngle, 0.1);
+  rotX = lerp(rotX, targetRotX, 0.05);
+}
+
+// ================================================================
+// TRUE 3D MOULD CAVITY GENERATOR
+// ================================================================
+
+void drawFlaskFrame() {
+  fill(colorFlask);
+  stroke(60);
+  strokeWeight(2);
+  float wOut = FLASK_SIZE + 20;
+  float wIn = FLASK_SIZE;
+  float h = Y_BASE_BOT - Y_TOP;
+  float cy = (Y_TOP + Y_BASE_BOT) / 2.0;
+  
+  pushMatrix(); 
+  translate(0, cy, 0);
+  pushMatrix(); translate(-wIn/2 - 5, 0, 0); box(10, h, wOut); popMatrix();
+  pushMatrix(); translate(wIn/2 + 5, 0, 0); box(10, h, wOut); popMatrix();
+  pushMatrix(); translate(0, 0, -wIn/2 - 5); box(wIn, h, 10); popMatrix();
+  pushMatrix(); translate(0, 0, wIn/2 + 5); box(wIn, h, 10); popMatrix();
+  popMatrix();
+}
+
+void drawBaseSand() {
+  // Solid block of sand acting as the floor beneath the pattern
+  fill(colorSand);
+  noStroke();
+  pushMatrix();
+  float h = Y_BASE_BOT - Y_BOT;
+  translate(0, Y_BOT + h/2.0, 0);
+  box(FLASK_SIZE, h, FLASK_SIZE);
+  popMatrix();
+}
+
+void drawRammedSand() {
+  fill(colorSand);
+  noStroke();
+  
+  float aStep = TWO_PI / 6.0;
+
+  // We explicitly draw the physical chunks of sand that surround the pattern, 
+  // leaving perfect 3D hollow pockets behind.
+  for(int i = 0; i < currentSegment; i++) {
+    float a1 = i * aStep;
+    float a2 = (i+1) * aStep;
+    float aMid = a1 + aStep/2.0;
+
+    // 1. Inner Core Sand (Inside the hub)
+    drawArcBlock(0, R_PIN, a1, a2, Y_TOP, Y_BOT);
+    
+    // 2. Outer Sand (From wheel rim to the square flask wall)
+    drawSquareSector(R_OUT_RIM, FLASK_SIZE, a1, a2, Y_TOP, Y_BOT);
+
+    // 3. Hollow Pocket 1 (Between previous spoke and current spoke)
+    drawArcBlock(R_HUB, R_IN_RIM, a1, aMid - SPOKE_HW, Y_TOP, Y_BOT);
+
+    // 4. Hollow Pocket 2 (Between current spoke and next spoke)
+    drawArcBlock(R_HUB, R_IN_RIM, aMid + SPOKE_HW, a2, Y_TOP, Y_BOT);
+  }
+}
+
+void drawPatternSegment(float yOffset) {
+  fill(colorPattern);
+  stroke(180, 120, 20); 
+  strokeWeight(1);
+  
+  float a1 = 0;
+  float a2 = TWO_PI / 6.0;
+  float aMid = a1 + (TWO_PI / 12.0);
+
+  pushMatrix();
+  translate(0, yOffset, 0);
+  
+  // Hub
+  drawArcBlock(R_PIN, R_HUB, a1, a2, Y_TOP, Y_BOT);
+  // Spoke
+  drawArcBlock(R_HUB, R_IN_RIM, aMid - SPOKE_HW, aMid + SPOKE_HW, Y_TOP, Y_BOT);
+  // Rim
+  drawArcBlock(R_IN_RIM, R_OUT_RIM, a1, a2, Y_TOP, Y_BOT);
+  
+  popMatrix();
+}
+
+// ------------------------------------------------
+// UNIVERSAL 3D MESH GENERATORS
+// ------------------------------------------------
+
+void drawArcBlock(float rIn, float rOut, float aStart, float aEnd, float yTop, float yBottom) {
+  // Generates a perfect 3D curved block used for both sand pockets and pattern pieces
+  float step = (aEnd - aStart) / max(1, int(degrees(aEnd - aStart) / 5.0)); 
+
+  // Top Face
+  beginShape(QUAD_STRIP);
+  for(float a = aStart; a <= aEnd + 0.001; a += step) {
+    vertex(rIn*cos(a), yTop, rIn*sin(a)); vertex(rOut*cos(a), yTop, rOut*sin(a));
+  }
+  endShape();
+  
+  // Bottom Face
+  beginShape(QUAD_STRIP);
+  for(float a = aStart; a <= aEnd + 0.001; a += step) {
+    vertex(rIn*cos(a), yBottom, rIn*sin(a)); vertex(rOut*cos(a), yBottom, rOut*sin(a));
+  }
+  endShape();
+  
+  // Inner Curved Wall
+  if (rIn > 0) {
+    beginShape(QUAD_STRIP);
+    for(float a = aStart; a <= aEnd + 0.001; a += step) {
+      vertex(rIn*cos(a), yTop, rIn*sin(a)); vertex(rIn*cos(a), yBottom, rIn*sin(a));
+    }
+    endShape();
+  }
+  
+  // Outer Curved Wall
+  beginShape(QUAD_STRIP);
+  for(float a = aStart; a <= aEnd + 0.001; a += step) {
+    vertex(rOut*cos(a), yTop, rOut*sin(a)); vertex(rOut*cos(a), yBottom, rOut*sin(a));
+  }
+  endShape();
+  
+  // Start & End Walls
+  beginShape(QUADS);
+  vertex(rIn*cos(aStart), yTop, rIn*sin(aStart)); vertex(rOut*cos(aStart), yTop, rOut*sin(aStart));
+  vertex(rOut*cos(aStart), yBottom, rOut*sin(aStart)); vertex(rIn*cos(aStart), yBottom, rIn*sin(aStart));
+  
+  vertex(rIn*cos(aEnd), yTop, rIn*sin(aEnd)); vertex(rOut*cos(aEnd), yTop, rOut*sin(aEnd));
+  vertex(rOut*cos(aEnd), yBottom, rOut*sin(aEnd)); vertex(rIn*cos(aEnd), yBottom, rIn*sin(aEnd));
+  endShape();
+}
+
+void drawSquareSector(float rIn, float size, float aStart, float aEnd, float yTop, float yBottom) {
+  // Raycasts the outer boundary to match the square edges of the flask
+  float step = (aEnd - aStart) / 10.0;
+  
+  // Top Face
+  beginShape(QUAD_STRIP);
+  for(float a = aStart; a <= aEnd + 0.001; a += step) {
+    float rOut = getSquareRadius(a, size);
+    vertex(rIn*cos(a), yTop, rIn*sin(a)); vertex(rOut*cos(a), yTop, rOut*sin(a));
+  }
+  endShape();
+  
+  // Inner Curved Wall
+  beginShape(QUAD_STRIP);
+  for(float a = aStart; a <= aEnd + 0.001; a += step) {
+    vertex(rIn*cos(a), yTop, rIn*sin(a)); vertex(rIn*cos(a), yBottom, rIn*sin(a));
+  }
+  endShape();
+  
+  // Outer Square Wall
+  beginShape(QUAD_STRIP);
+  for(float a = aStart; a <= aEnd + 0.001; a += step) {
+    float rOut = getSquareRadius(a, size);
+    vertex(rOut*cos(a), yTop, rOut*sin(a)); vertex(rOut*cos(a), yBottom, rOut*sin(a));
+  }
+  endShape();
+  
+  // Start & End Walls
+  beginShape(QUADS);
+  float rOutStart = getSquareRadius(aStart, size);
+  vertex(rIn*cos(aStart), yTop, rIn*sin(aStart)); vertex(rOutStart*cos(aStart), yTop, rOutStart*sin(aStart));
+  vertex(rOutStart*cos(aStart), yBottom, rOutStart*sin(aStart)); vertex(rIn*cos(aStart), yBottom, rIn*sin(aStart));
+
+  float rOutEnd = getSquareRadius(aEnd, size);
+  vertex(rIn*cos(aEnd), yTop, rIn*sin(aEnd)); vertex(rOutEnd*cos(aEnd), yTop, rOutEnd*sin(aEnd));
+  vertex(rOutEnd*cos(aEnd), yBottom, rOutEnd*sin(aEnd)); vertex(rIn*cos(aEnd), yBottom, rIn*sin(aEnd));
+  endShape();
+}
+
+float getSquareRadius(float angle, float size) {
+  float absCos = abs(cos(angle));
+  float absSin = abs(sin(angle));
+  return (size / 2.0) / max(absCos, absSin);
+}
+
+void drawCylinder(float r, float h) {
+  float step = TWO_PI / 20.0;
+  beginShape(QUAD_STRIP);
+  for(float a = 0; a <= TWO_PI + 0.01; a += step) {
+    vertex(r*cos(a), -h/2, r*sin(a)); vertex(r*cos(a), h/2, r*sin(a));
+  }
+  endShape();
+  beginShape(TRIANGLE_FAN); vertex(0, -h/2, 0);
+  for(float a = 0; a <= TWO_PI + 0.01; a += step) vertex(r*cos(a), -h/2, r*sin(a));
+  endShape();
+}
+
+// ================================================================
+// 2D USER INTERFACE
+// ================================================================
+void drawUI() {
+  String title = "";
+  String subtitle = "";
+  String btnText = "";
+
+  if (state == SETUP_BASE) {
+    title = "STEP 1: PREPARE BASE & PIVOT";
+    subtitle = "A central pivot pin is set into the firm sand bed.";
+    btnText = "MOUNT PATTERN";
+  } else if (state == PLACE_PATTERN) {
+    title = "STEP 2: MOUNT SEGMENTAL PATTERN";
+    subtitle = "A single, small segment is attached to the central pivot pin.";
+    btnText = "RAM SAND";
+  } else if (state == MOLDING_PROCESS) {
+    title = "STEP 3: RAMMING & ROTATING (" + currentSegment + "/6)";
+    subtitle = "Sand is rammed around the segment. It is then rotated to the next slot.";
+    btnText = (currentSegment < maxSegments - 1) ? "RAM & ROTATE NEXT" : "FINISH MOLDING";
+  } else if (state == REMOVE_PATTERN) {
+    title = "STEP 4: EXTRACT PATTERN";
+    subtitle = "The full 360-degree circle is rammed. The pattern and pin are removed.";
+    btnText = "VIEW 3D CAVITY";
+  } else if (state == FINAL_CAVITY) {
+    title = "STEP 5: COMPLETE CIRCULAR MOULD";
+    subtitle = "Notice the true 3D hollow cavity created from just one cheap segment!";
+    btnText = "RESTART";
+  }
+
+  fill(255, 255, 255, 230);
+  noStroke(); rect(0, 0, width, 90);
+
+  fill(20); textAlign(CENTER, TOP); textSize(28);
+  text(title, width / 2, 15);
+  fill(70); textSize(18);
+  text(subtitle, width / 2, 55);
+
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+  boolean over = mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH;
+
+  fill(over ? 220 : 255); stroke(120); strokeWeight(2);
+  rect(bx, by, btnW, btnH, 8);
+
+  fill(30); textAlign(CENTER, CENTER); textSize(22);
+  text(btnText, bx + btnW / 2, by + btnH / 2 - 3);
+
+  fill(90); textAlign(LEFT, BOTTOM); textSize(16);
+  text("Drag screen = Rotate 3D view", 20, height - 15);
+}
+
+// ================================================================
+// INPUT HANDLING
+// ================================================================
+void mouseDragged() {
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+
+  if (!(mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+    if (state != FINAL_CAVITY) targetRotX = rotX; 
+  }
+}
+
+void mouseReleased() {
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+
+  if (mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH) {
+    
+    if (state == SETUP_BASE) {
+      state = PLACE_PATTERN;
+      targetPatternY = 0; 
+    } 
+    else if (state == PLACE_PATTERN) {
+      state = MOLDING_PROCESS;
+      currentSegment = 1;
+      targetPatternAngle = currentSegment * (PI/3); 
+    } 
+    else if (state == MOLDING_PROCESS) {
+      if (currentSegment < maxSegments - 1) {
+        currentSegment++; 
+        targetPatternAngle = currentSegment * (PI/3);
+        // Create a slight "hop" animation to show lifting between slots
+        patternY = -40; 
+      } else {
+        currentSegment++; 
+        state = REMOVE_PATTERN;
+        targetPatternY = -300; 
+      }
+    } 
+    else if (state == REMOVE_PATTERN) {
+      state = FINAL_CAVITY;
+      targetRotX = PI/8; // Tilt slightly over it to stare down into the deep holes
+    } 
+    else if (state == FINAL_CAVITY) {
+      resetSimulation();
+    }
+  }
+}
+
+void resetSimulation() {
+  state = SETUP_BASE;
+  currentSegment = 0;
+  patternY = -300;
+  targetPatternY = -300;
+  patternAngle = 0;
+  targetPatternAngle = 0;
+  rotX = -PI / 4.0;
+  targetRotX = -PI / 4.0;
+  rotY = PI / 4.0;
+}
