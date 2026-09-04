@@ -1,0 +1,313 @@
+Drag piece pattern full correct way
+
+// 3D Sand Casting Simulation - Cope and Drag Pattern
+// Flange Pattern: Cylindrical Base with Conical Front (Straight Dowel Pins)
+// Complete APDE Processing Source Code
+
+int state = 0;
+
+// Animation Variables
+float animBotPatY = -600;  float targetBotPatY = -600;
+float animTopPatY = -600;  float targetTopPatY = -600;
+float animCopeY = -600;    float targetCopeY = -600;
+
+// Sand visibility states
+boolean dragSandVisible = false;
+boolean copeSandVisible = false;
+
+// Camera and Interaction
+float rotX = -PI/6;
+float rotY = PI/4;
+float btnW = 200, btnH = 50;
+
+// Dimensions
+float fw = 380, fh = 100, fd = 200; // Flask dimensions
+
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  smooth(4);
+}
+
+void draw() {
+  background(240);
+  
+  // Setup 3D Lighting
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(130, 130, 130);
+  directionalLight(255, 255, 255, -0.5, 1, -0.5);
+
+  pushMatrix();
+  translate(width/2, height/2 + 20, -200);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // Smooth Animations
+  animBotPatY = lerp(animBotPatY, targetBotPatY, 0.1);
+  animTopPatY = lerp(animTopPatY, targetTopPatY, 0.1);
+  animCopeY = lerp(animCopeY, targetCopeY, 0.1);
+
+  // --- 1. DRAG (Bottom Flask) ---
+  pushMatrix();
+  drawFlask(color(50, 80, 200), false); // Blue Drag
+  if (dragSandVisible) {
+    drawSandWithCavity(false, state >= 7);
+  }
+  popMatrix();
+
+  // --- 2. BOTTOM PATTERN (Drag Half) ---
+  if (state >= 1 && state < 7) {
+    pushMatrix();
+    translate(0, animBotPatY, 0);
+    drawHalfModel(false, color(150), false); 
+    popMatrix();
+  }
+
+  // --- 3. TOP PATTERN (Cope Half) ---
+  if (state >= 3 && state < 7) {
+    pushMatrix();
+    translate(0, animTopPatY, 0);
+    drawHalfModel(true, color(170), false); 
+    popMatrix();
+  }
+
+  // --- 4. COPE (Top Flask) ---
+  if (state >= 4) {
+    pushMatrix();
+    translate(0, animCopeY, 0);
+    drawFlask(color(200, 60, 50), true); // Red Cope
+    if (copeSandVisible) {
+      drawSandWithCavity(true, state >= 7);
+    }
+    popMatrix();
+  }
+
+  popMatrix(); // End 3D Space
+
+  // --- UI Overlay ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  
+  fill(40);
+  textSize(28);
+  textAlign(CENTER, TOP);
+  String msg = "";
+  if (state == 0) msg = "Step 1: Empty Drag (Lower Flask)";
+  if (state == 1) msg = "Step 2: Place Bottom Pattern (Straight Dowel Pins)";
+  if (state == 2) msg = "Step 3: Ram Moulding Sand into Drag";
+  if (state == 3) msg = "Step 4: Align Top Pattern on Dowel Pins";
+  if (state == 4) msg = "Step 5: Place Cope (Upper Flask)";
+  if (state == 5) msg = "Step 6: Ram Moulding Sand into Cope";
+  if (state == 6) msg = "Step 7: Separate Cope and Drag Flasks";
+  if (state == 7) msg = "Step 8: Remove Pattern -> Mold Cavity Created";
+  text(msg, width/2, 30);
+  
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  stroke(120); strokeWeight(2);
+  fill(mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH ? 220 : 245);
+  rect(btnX, btnY, btnW, btnH, 10);
+  
+  fill(0); textSize(22); textAlign(CENTER, CENTER);
+  text(state == 7 ? "Restart" : "Next Step", btnX + btnW/2, btnY + btnH/2 - 2);
+}
+
+// ==========================================
+// GEOMETRY & SIMULATION LOGIC
+// ==========================================
+
+void drawFlask(color c, boolean isTop) {
+  noFill();
+  strokeWeight(4);
+  stroke(c);
+  float yOffset = isTop ? -fh/2 : fh/2;
+  pushMatrix();
+  translate(0, yOffset, 0);
+  box(fw, fh, fd);
+  
+  // Side alignment flanges
+  fill(c); noStroke();
+  pushMatrix(); translate(-fw/2 - 10, 0, 0); box(20, fh/2, 40); popMatrix();
+  pushMatrix(); translate(fw/2 + 10, 0, 0); box(20, fh/2, 40); popMatrix();
+  popMatrix();
+}
+
+void drawSandWithCavity(boolean isTop, boolean showCavityInterior) {
+  fill(210, 120, 70); // Sand Color
+  noStroke();
+  
+  float yDir = isTop ? -1 : 1;
+  float t = 10; // Outer box wall thickness for rendering
+
+  // 1. Draw outer bounds of the sand box to look like a solid block
+  pushMatrix(); translate(0, yDir * fh/2, fd/2 - t/2); box(fw, fh, t); popMatrix(); // Front
+  pushMatrix(); translate(0, yDir * fh/2, -fd/2 + t/2); box(fw, fh, t); popMatrix(); // Back
+  pushMatrix(); translate(-fw/2 + t/2, yDir * fh/2, 0); box(t, fh, fd); popMatrix(); // Left
+  pushMatrix(); translate(fw/2 - t/2, yDir * fh/2, 0); box(t, fh, fd); popMatrix(); // Right
+  pushMatrix(); translate(0, yDir * fh - yDir*t/2, 0); box(fw, t, fd); popMatrix(); // Cap
+
+  // 2. Draw Parting Line Surface (Sand plane touching the pattern)
+  float minX = -60, midX = 40, maxX = 160; 
+  float rBase = 50, rConeStart = 50, rConeEnd = 25;
+  float outX = fw/2, outZ = fd/2;
+
+  beginShape(QUADS);
+  // Far Left
+  vertex(-outX, 0, outZ); vertex(-outX, 0, -outZ); vertex(minX, 0, -outZ); vertex(minX, 0, outZ);
+  // Cylinder Top & Bottom bounds
+  vertex(minX, 0, outZ); vertex(midX, 0, outZ); vertex(midX, 0, rBase); vertex(minX, 0, rBase);
+  vertex(minX, 0, -rBase); vertex(midX, 0, -rBase); vertex(midX, 0, -outZ); vertex(minX, 0, -outZ);
+  // Cone Top & Bottom bounds
+  vertex(midX, 0, outZ); vertex(maxX, 0, outZ); vertex(maxX, 0, rConeEnd); vertex(midX, 0, rConeStart);
+  vertex(midX, 0, -rConeStart); vertex(maxX, 0, -rConeEnd); vertex(maxX, 0, -outZ); vertex(midX, 0, -outZ);
+  // Far Right
+  vertex(maxX, 0, outZ); vertex(outX, 0, outZ); vertex(outX, 0, -outZ); vertex(maxX, 0, -outZ);
+  endShape();
+
+  // 3. Draw Cavity Interior
+  if (showCavityInterior) {
+    drawHalfModel(isTop, color(210, 120, 70), true);
+  }
+}
+
+void drawHalfModel(boolean isTop, color col, boolean isCavity) {
+  fill(col);
+  noStroke();
+
+  int res = 40;
+  float minX = -60, midX = 40, maxX = 160;
+  float rBase = 50, rConeStart = 50, rConeEnd = 25;
+  float yMult = isTop ? -1 : 1; 
+
+  // Cylindrical Base (Back)
+  beginShape(TRIANGLE_STRIP);
+  for(int i = 0; i <= res; i++) {
+    float theta = map(i, 0, res, 0, PI);
+    float y = yMult * rBase * sin(theta);
+    float z = rBase * cos(theta);
+    vertex(minX, y, z);
+    vertex(midX, y, z);
+  }
+  endShape();
+
+  // Conical Front (Tapering)
+  beginShape(TRIANGLE_STRIP);
+  for(int i = 0; i <= res; i++) {
+    float theta = map(i, 0, res, 0, PI);
+    vertex(midX, yMult * rConeStart * sin(theta), rConeStart * cos(theta));
+    vertex(maxX, yMult * rConeEnd * sin(theta), rConeEnd * cos(theta));
+  }
+  endShape();
+
+  // Left End Cap
+  beginShape(TRIANGLE_FAN);
+  vertex(minX, 0, 0);
+  for(int i = 0; i <= res; i++) {
+    float theta = map(i, 0, res, 0, PI);
+    vertex(minX, yMult * rBase * sin(theta), rBase * cos(theta));
+  }
+  endShape();
+
+  // Right End Cap
+  beginShape(TRIANGLE_FAN);
+  vertex(maxX, 0, 0);
+  for(int i = 0; i <= res; i++) {
+    float theta = map(i, 0, res, 0, PI);
+    vertex(maxX, yMult * rConeEnd * sin(theta), rConeEnd * cos(theta));
+  }
+  endShape();
+
+  // Flat Parting Surface & Perfectly Straight Dowel Pins
+  if (!isCavity) {
+    beginShape(QUADS);
+    vertex(minX, 0, rBase); vertex(midX, 0, rBase); vertex(midX, 0, -rBase); vertex(minX, 0, -rBase);
+    vertex(midX, 0, rConeStart); vertex(maxX, 0, rConeEnd); vertex(maxX, 0, -rConeEnd); vertex(midX, 0, -rConeStart);
+    endShape();
+
+    // Straight Vertical Dowel Pins
+    fill(220, 160, 40); // Brass pin color
+    if (!isTop) {
+      // Pins stick UP (-Y) from the exact centerline (Z=0) of the bottom pattern
+      pushMatrix(); translate(-10, -12, 0); drawCylinder(5, 24); popMatrix();
+      pushMatrix(); translate(100, -12, 0); drawCylinder(5, 24); popMatrix();
+    } else {
+      // Small recesses indicating pin holes on the top pattern
+      fill(60);
+      pushMatrix(); translate(-10, 0.5, 0); drawCylinder(5.5, 2); popMatrix();
+      pushMatrix(); translate(100, 0.5, 0); drawCylinder(5.5, 2); popMatrix();
+    }
+  }
+}
+
+// Custom function to draw a perfect 3D cylinder so pins remain visually straight at any angle
+void drawCylinder(float r, float h) {
+  int sides = 16;
+  float angle = TWO_PI / sides;
+  
+  // Cylinder Body
+  beginShape(TRIANGLE_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(i * angle) * r;
+    float z = sin(i * angle) * r;
+    vertex(x, -h/2, z);
+    vertex(x, h/2, z);
+  }
+  endShape();
+  
+  // Top Cap
+  beginShape(TRIANGLE_FAN);
+  vertex(0, -h/2, 0);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(i * angle) * r;
+    float z = sin(i * angle) * r;
+    vertex(x, -h/2, z);
+  }
+  endShape();
+}
+
+// ==========================================
+// INTERACTION EVENTS
+// ==========================================
+
+void mouseDragged() {
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  if (!(mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+void mouseReleased() {
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  if (mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH) {
+    state++;
+    if (state > 7) state = 0; 
+    
+    if (state == 0) {
+      targetBotPatY = -600; targetTopPatY = -600; targetCopeY = -600;
+      dragSandVisible = false; copeSandVisible = false;
+    } else if (state == 1) {
+      targetBotPatY = 0; 
+    } else if (state == 2) {
+      dragSandVisible = true;
+    } else if (state == 3) {
+      targetTopPatY = 0; 
+    } else if (state == 4) {
+      targetCopeY = 0;
+    } else if (state == 5) {
+      copeSandVisible = true;
+    } else if (state == 6) {
+      targetCopeY = -280;   
+      targetTopPatY = -280; 
+    } else if (state == 7) {
+      targetBotPatY = -800; 
+      targetTopPatY = -800; 
+    }
+  }
+}
