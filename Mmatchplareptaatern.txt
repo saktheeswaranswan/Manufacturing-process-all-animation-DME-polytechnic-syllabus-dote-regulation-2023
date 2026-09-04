@@ -1,0 +1,314 @@
+Match plate pattern match plate pattern 
+
+
+// 3D Sand Casting Simulation - Match Plate Pattern
+// Features: Match Plate with Stepped Circular Discs (Smaller Cylinder on Top/Bottom)
+// Complete APDE Processing Source Code
+
+int state = 0;
+
+// Animation Variables for smooth transitions
+float animMatchY = -800;   float targetMatchY = -800;
+float animCopeY = -800;    float targetCopeY = -800;
+
+// Sand visibility states
+boolean dragSandVisible = false;
+boolean copeSandVisible = false;
+
+// Camera and Interaction
+float rotX = -PI/6;
+float rotY = PI/4;
+float btnW = 240, btnH = 50;
+
+// --- Dimensions ---
+float fw = 380, fh = 100, fd = 200; // Flask dimensions
+// Stepped Pattern Dimensions
+float r1 = 70, h1 = 30; // Wider Base Cylinder
+float r2 = 35, h2 = 45; // Smaller Top/Bottom Cylinder
+float plateThick = 6;   // Match Plate Thickness
+
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  smooth(4);
+}
+
+void draw() {
+  background(240);
+  
+  // Setup 3D Lighting for depth perception
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(130, 130, 130);
+  directionalLight(255, 255, 255, -0.5, 1, -0.5);
+
+  pushMatrix();
+  // Center scene
+  translate(width/2, height/2 + 20, -200);
+  
+  // Apply finger drag rotation
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // Smooth Animations
+  animMatchY = lerp(animMatchY, targetMatchY, 0.1);
+  animCopeY = lerp(animCopeY, targetCopeY, 0.1);
+
+  // --- 1. DRAG (Bottom Flask) ---
+  pushMatrix();
+  drawFlask(color(50, 80, 200), false); // Blue Drag
+  if (dragSandVisible) {
+    drawSandWithCavity(false, state >= 6);
+  }
+  popMatrix();
+
+  // --- 2. MATCH PLATE PATTERN ---
+  if (state >= 1 && state < 7) {
+    pushMatrix();
+    translate(0, animMatchY, 0);
+    drawMatchPlatePattern(); 
+    popMatrix();
+  }
+
+  // --- 3. COPE (Top Flask) ---
+  if (state >= 3) {
+    pushMatrix();
+    translate(0, animCopeY, 0);
+    drawFlask(color(200, 60, 50), true); // Red Cope
+    if (copeSandVisible) {
+      drawSandWithCavity(true, state >= 6);
+    }
+    popMatrix();
+  }
+
+  popMatrix(); // End 3D Space
+
+  // --- UI Overlay (2D) ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  
+  fill(40);
+  textSize(28);
+  textAlign(CENTER, TOP);
+  String msg = "";
+  if (state == 0) msg = "Step 1: Empty Drag (Lower Flask)";
+  if (state == 1) msg = "Step 2: Place Stepped Match Plate Pattern";
+  if (state == 2) msg = "Step 3: Pour Sand into Drag";
+  if (state == 3) msg = "Step 4: Place Cope (Upper Flask) over Match Plate";
+  if (state == 4) msg = "Step 5: Pour Sand into Cope";
+  if (state == 5) msg = "Step 6: Separate Flasks (Lift Cope & Pattern)";
+  if (state == 6) msg = "Step 7: Remove Pattern -> Stepped Cavities Revealed!\n(Drag to look inside)";
+  text(msg, width/2, 20);
+  
+  // Next Button
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  stroke(120); strokeWeight(2);
+  fill(mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH ? 220 : 245);
+  rect(btnX, btnY, btnW, btnH, 10);
+  
+  fill(0); textSize(22); textAlign(CENTER, CENTER);
+  text(state == 6 ? "Restart Process" : "Next Step", btnX + btnW/2, btnY + btnH/2 - 2);
+}
+
+// ==========================================
+// GEOMETRY & SIMULATION LOGIC
+// ==========================================
+
+void drawFlask(color c, boolean isTop) {
+  noFill();
+  strokeWeight(4);
+  stroke(c);
+  float yOffset = isTop ? -fh/2 : fh/2;
+  pushMatrix();
+  translate(0, yOffset, 0);
+  box(fw, fh, fd);
+  
+  // Side alignment flanges 
+  fill(c); noStroke();
+  pushMatrix(); translate(-fw/2 - 10, 0, 0); box(20, fh/2, 40); popMatrix();
+  pushMatrix(); translate(fw/2 + 10, 0, 0); box(20, fh/2, 40); popMatrix();
+  popMatrix();
+}
+
+void drawMatchPlatePattern() {
+  fill(170, 180, 190); // Shiny aluminum pattern color
+  noStroke();
+
+  // 1. The Match Plate (Flat Board in the middle)
+  pushMatrix();
+  box(fw + 30, plateThick, fd + 30);
+  popMatrix();
+
+  // 2. Top Pattern (Wider base, smaller cylinder on top)
+  pushMatrix();
+  translate(0, -plateThick/2 - h1/2, 0);
+  drawSolidCylinder(r1, h1); // Wide Base Cylinder
+  translate(0, -h1/2 - h2/2, 0);
+  drawSolidCylinder(r2, h2); // Smaller Top Cylinder
+  popMatrix();
+
+  // 3. Bottom Pattern (Wider base, smaller cylinder on bottom)
+  pushMatrix();
+  translate(0, plateThick/2 + h1/2, 0);
+  drawSolidCylinder(r1, h1); // Wide Base Cylinder
+  translate(0, h1/2 + h2/2, 0);
+  drawSolidCylinder(r2, h2); // Smaller Bottom Cylinder
+  popMatrix();
+}
+
+void drawSandWithCavity(boolean isTop, boolean showCavityInterior) {
+  fill(210, 130, 80); // Sand Surface Color
+  noStroke();
+  
+  float yDir = isTop ? -1 : 1;
+  float t = 10; // Outer sand box wall thickness
+
+  // 1. Draw outer bounds of the sand box to look like a solid block
+  pushMatrix(); translate(0, yDir * fh/2, fd/2 - t/2); box(fw, fh, t); popMatrix(); // Front
+  pushMatrix(); translate(0, yDir * fh/2, -fd/2 + t/2); box(fw, fh, t); popMatrix(); // Back
+  pushMatrix(); translate(-fw/2 + t/2, yDir * fh/2, 0); box(t, fh, fd); popMatrix(); // Left
+  pushMatrix(); translate(fw/2 - t/2, yDir * fh/2, 0); box(t, fh, fd); popMatrix(); // Right
+  pushMatrix(); translate(0, yDir * fh - yDir*t/2, 0); box(fw, t, fd); popMatrix(); // Cap
+
+  // 2. Draw Parting Line Surface (Plane with a cutout for the pattern base)
+  beginShape();
+  vertex(-fw/2, 0, -fd/2);
+  vertex(fw/2, 0, -fd/2);
+  vertex(fw/2, 0, fd/2);
+  vertex(-fw/2, 0, fd/2);
+  
+  // Cutout the hole for the wide base cylinder
+  beginContour();
+  for (int i = 40; i >= 0; i--) { 
+    float a = map(i, 0, 40, 0, TWO_PI);
+    vertex(r1 * cos(a), 0, r1 * sin(a));
+  }
+  endContour();
+  endShape(CLOSE);
+
+  // 3. Draw the Cavity Interior walls (The exact negative shape of the stepped cylinder)
+  if (showCavityInterior) {
+    fill(170, 90, 50); // Darker sand color for the inside of the cavity to add depth
+    int res = 40;
+    
+    // A. Wide inner cylinder cavity wall
+    beginShape(QUAD_STRIP);
+    for(int i = 0; i <= res; i++) {
+      float a = map(i, 0, res, 0, TWO_PI);
+      float x = r1 * cos(a), z = r1 * sin(a);
+      vertex(x, 0, z);
+      vertex(x, yDir * h1, z);
+    }
+    endShape();
+    
+    // B. Horizontal flat step inside cavity (connecting wide to narrow)
+    beginShape(QUAD_STRIP);
+    for(int i = 0; i <= res; i++) {
+      float a = map(i, 0, res, 0, TWO_PI);
+      vertex(r1 * cos(a), yDir * h1, r1 * sin(a));
+      vertex(r2 * cos(a), yDir * h1, r2 * sin(a));
+    }
+    endShape();
+    
+    // C. Smaller deep cylinder cavity wall
+    beginShape(QUAD_STRIP);
+    for(int i = 0; i <= res; i++) {
+      float a = map(i, 0, res, 0, TWO_PI);
+      float x = r2 * cos(a), z = r2 * sin(a);
+      vertex(x, yDir * h1, z);
+      vertex(x, yDir * (h1+h2), z);
+    }
+    endShape();
+    
+    // D. Deep flat cap at the very end of the cavity
+    beginShape(TRIANGLE_FAN);
+    vertex(0, yDir * (h1+h2), 0);
+    for(int i = 0; i <= res; i++) {
+      float a = map(i, 0, res, 0, TWO_PI);
+      vertex(r2 * cos(a), yDir * (h1+h2), r2 * sin(a));
+    }
+    endShape();
+  }
+}
+
+// Reusable solid cylinder function to draw the physical pattern
+void drawSolidCylinder(float r, float h) {
+  int sides = 40;
+  float angle = TWO_PI / sides;
+  
+  // Cylindrical Body
+  beginShape(QUAD_STRIP);
+  for (int i = 0; i <= sides; i++) {
+    float x = cos(i * angle) * r;
+    float z = sin(i * angle) * r;
+    vertex(x, -h/2, z);
+    vertex(x, h/2, z);
+  }
+  endShape();
+  
+  // Top Cap
+  beginShape(TRIANGLE_FAN);
+  vertex(0, -h/2, 0);
+  for (int i = 0; i <= sides; i++) {
+    vertex(cos(i*angle)*r, -h/2, sin(i*angle)*r);
+  }
+  endShape();
+  
+  // Bottom Cap
+  beginShape(TRIANGLE_FAN);
+  vertex(0, h/2, 0);
+  for (int i = 0; i <= sides; i++) {
+    vertex(cos(i*angle)*r, h/2, sin(i*angle)*r);
+  }
+  endShape();
+}
+
+// ==========================================
+// INTERACTION EVENTS
+// ==========================================
+
+void mouseDragged() {
+  // Rotate the 3D scene (unless dragging the UI button)
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  if (!(mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+void mouseReleased() {
+  float btnX = width/2 - btnW/2;
+  float btnY = height - 90;
+  
+  // Progress Simulation State on button tap
+  if (mouseX > btnX && mouseX < btnX+btnW && mouseY > btnY && mouseY < btnY+btnH) {
+    state++;
+    if (state > 6) state = 0; 
+    
+    if (state == 0) {
+      targetMatchY = -800; targetCopeY = -800;
+      dragSandVisible = false; copeSandVisible = false;
+    } else if (state == 1) {
+      targetMatchY = 0; 
+    } else if (state == 2) {
+      dragSandVisible = true;
+    } else if (state == 3) {
+      targetCopeY = 0; 
+    } else if (state == 4) {
+      copeSandVisible = true;
+    } else if (state == 5) {
+      // Lift the Cope and Match Plate Pattern up together
+      targetCopeY = -350;   
+      targetMatchY = -180; 
+    } else if (state == 6) {
+      // Remove Pattern completely up off-screen, keep Cope elevated 
+      // to allow user to peek inside both top and bottom cavities
+      targetCopeY = -350;
+      targetMatchY = -1200; 
+    }
+  }
+}
