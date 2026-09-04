@@ -1,0 +1,599 @@
+Skeleton pattern 
+
+// ================================================================
+// SKELETON PATTERN - 3D SAND CASTING SIMULATION
+// COMPLETE APDE / PROCESSING ANDROID P3D SOURCE CODE
+//
+// TEACHING SEQUENCE
+// STEP 1 : Assemble skeleton base and parabolic arch ribs
+// STEP 2 : Attach longitudinal connecting sticks
+// STEP 3 : Place the parabolic leveling wood (Strickle board)
+// STEP 4 : Fill with loam sand roughly over the skeleton
+// STEP 5 : Sweep strickle board to level sand into parabolic shape
+// STEP 6 : Remove skeleton pattern leaving the finished cavity
+//
+// TOUCH INSTRUCTIONS:
+// Drag screen = rotate 3D model
+// Next Step = advance animation
+// ================================================================
+
+
+// ================================================================
+// STATE MACHINE
+// ================================================================
+
+int state = 0;
+
+final int SKELETON_ARCHES = 0;
+final int SKELETON_STICKS = 1;
+final int PLACE_STRICKLE  = 2;
+final int FILL_SAND       = 3;
+final int SWEEP_SAND      = 4;
+final int REMOVE_PATTERN  = 5;
+final int FINAL_CAVITY    = 6;
+
+// ================================================================
+// CAMERA & INTERACTION
+// ================================================================
+
+float rotX = -PI / 5.0;
+float rotY = PI / 4.0;
+float cameraZ = -220;
+
+float btnW = 280;
+float btnH = 60;
+
+// ================================================================
+// ANIMATION VARIABLES
+// ================================================================
+
+// Pattern lift during removal
+float patternLiftY = 0;
+float targetPatternLift = 0;
+
+// Strickle board sweeping position
+float strickleZ = -170;
+float targetStrickleZ = -170;
+
+// Sand rough block height
+float roughSandY = 20;
+float targetRoughSandY = 20;
+
+boolean sweepingActive = false;
+int sweepStartTime = 0;
+int sweepDuration = 4000;
+
+boolean removingActive = false;
+int removeStartTime = 0;
+int removeDuration = 3500;
+
+// ================================================================
+// DIMENSIONS
+// ================================================================
+
+float patternLength = 300;
+float archRadius = 90;
+float archThickness = 12; // Along Z
+float archDepth = 15;     // Radial depth of the wood rib
+
+int ribCount = 4;
+float[] ribZPositions = {-110, -36.6, 36.6, 110};
+
+float baseThickness = 12;
+float baseWidth = 220;
+
+float stickRadius = 6;
+
+// ================================================================
+// COLOURS
+// ================================================================
+
+int woodMain, woodDark, woodHighlight, woodStrickle;
+int sandMain, sandDark, sandRough;
+int cavityWall;
+
+// ================================================================
+// SETUP
+// ================================================================
+
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  smooth(4);
+
+  // Materials
+  woodMain      = color(182, 114, 55);
+  woodDark      = color(115, 68, 35);
+  woodHighlight = color(230, 155, 75);
+  woodStrickle  = color(160, 100, 50);
+  
+  sandMain      = color(210, 145, 82);
+  sandDark      = color(170, 100, 53);
+  sandRough     = color(190, 125, 65);
+  
+  cavityWall    = color(140, 80, 40); // Darker sand to show indentations
+}
+
+
+// ================================================================
+// MAIN DRAW LOOP
+// ================================================================
+
+void draw() {
+  background(240, 243, 245);
+
+  updateAnimations();
+
+  // --- 3D SCENE SETUP ---
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(130, 130, 130);
+  directionalLight(255, 255, 255, -0.5, 1.0, -0.45);
+
+  pushMatrix();
+  translate(width / 2, height / 2 + 50, cameraZ);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  // Draw the ground plane
+  drawGround();
+
+  // Draw Sand
+  if (state >= FILL_SAND) {
+    drawMouldingSand();
+  }
+  
+  // Draw Pattern Geometry (Moves up during removal)
+  pushMatrix();
+  translate(0, -patternLiftY, 0);
+
+  if (state <= REMOVE_PATTERN) {
+    drawSkeletonBase();
+    drawArchRibs();
+    
+    if (state >= SKELETON_STICKS) {
+      drawLongitudinalSticks();
+    }
+  }
+  
+  // Draw Strickle Board
+  if (state >= PLACE_STRICKLE && state <= REMOVE_PATTERN) {
+    drawStrickleBoard();
+  }
+  
+  popMatrix();
+  
+  // Draw the cavity decals left behind in the sand
+  if (state >= REMOVE_PATTERN) {
+     drawCavityIndentations(); 
+  }
+
+  popMatrix();
+
+  // --- 2D UI OVERLAY ---
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  drawUI();
+}
+
+// ================================================================
+// ANIMATION CONTROLLER
+// ================================================================
+
+void updateAnimations() {
+  
+  // 1. Strickle Sweeping Animation
+  if (state == SWEEP_SAND && sweepingActive) {
+    float p = constrain((millis() - sweepStartTime) / float(sweepDuration), 0, 1);
+    // Ease-in-out curve
+    float smoothP = p * p * (3.0 - 2.0 * p);
+    strickleZ = lerp(-170, 170, smoothP);
+    
+    if (p >= 1.0) {
+      sweepingActive = false;
+      strickleZ = 170;
+    }
+  }
+  
+  // 2. Pattern Lifting Animation
+  if (state == REMOVE_PATTERN && removingActive) {
+    float p = constrain((millis() - removeStartTime) / float(removeDuration), 0, 1);
+    float smoothP = p * p * (3.0 - 2.0 * p);
+    patternLiftY = lerp(0, 300, smoothP); // Lift up 300px
+    
+    if (p >= 1.0) {
+      removingActive = false;
+      state = FINAL_CAVITY;
+    }
+  }
+  
+  // 3. Simple rough sand falling
+  if (state == FILL_SAND) {
+    roughSandY = lerp(roughSandY, 0, 0.1);
+  }
+}
+
+// ================================================================
+// 3D MODEL RENDERING METHODS
+// ================================================================
+
+void drawGround() {
+  fill(180);
+  noStroke();
+  beginShape(QUADS);
+  vertex(-300, baseThickness, -300);
+  vertex(300, baseThickness, -300);
+  vertex(300, baseThickness, 300);
+  vertex(-300, baseThickness, 300);
+  endShape();
+  
+  // Center axis line
+  stroke(100, 100, 100, 80);
+  strokeWeight(2);
+  line(-250, 0, 0, 250, 0, 0);
+  noStroke();
+}
+
+// ------------------------------------------------
+// THE SKELETON PATTERN
+// ------------------------------------------------
+
+void drawSkeletonBase() {
+  fill(woodMain);
+  stroke(woodDark);
+  strokeWeight(1.5);
+  
+  pushMatrix();
+  translate(0, baseThickness/2, 0);
+  box(baseWidth, baseThickness, patternLength + 40);
+  popMatrix();
+}
+
+void drawArchRibs() {
+  for (int i = 0; i < ribCount; i++) {
+    pushMatrix();
+    translate(0, 0, ribZPositions[i]);
+    drawSingleArch(woodMain, woodDark, archRadius, archDepth, archThickness);
+    popMatrix();
+  }
+}
+
+void drawLongitudinalSticks() {
+  fill(woodHighlight);
+  stroke(woodDark);
+  strokeWeight(1);
+  
+  // Top stick
+  pushMatrix();
+  translate(0, -archRadius - stickRadius/2, 0);
+  box(stickRadius*2, stickRadius*2, patternLength + 20);
+  popMatrix();
+  
+  // Side sticks at 45 degrees
+  float a = PI/4.0;
+  float sx = cos(a) * archRadius;
+  float sy = -sin(a) * archRadius;
+  
+  pushMatrix(); translate(sx, sy, 0); box(stickRadius*2, stickRadius*2, patternLength + 20); popMatrix();
+  pushMatrix(); translate(-sx, sy, 0); box(stickRadius*2, stickRadius*2, patternLength + 20); popMatrix();
+}
+
+// ------------------------------------------------
+// THE STRICKLE BOARD (LEVELING WOOD)
+// ------------------------------------------------
+
+void drawStrickleBoard() {
+  pushMatrix();
+  translate(0, 0, strickleZ);
+  
+  fill(woodStrickle);
+  stroke(40);
+  strokeWeight(2);
+  
+  float boardW = baseWidth + 40;
+  float boardH = archRadius + 40;
+  float boardThickness = 8;
+  
+  // We draw the strickle board face with an arch cut out of the bottom
+  beginShape();
+  vertex(-boardW/2, -boardH, 0);
+  vertex(boardW/2, -boardH, 0);
+  vertex(boardW/2, 10, 0);
+  
+  // Inner parabolic/arch cutout (drawn right-to-left)
+  for(int i = 0; i <= 30; i++) {
+     float a = PI * (i/30.0); // 0 to PI
+     float x = cos(a) * (archRadius + 2); // Slightly larger to clear wood
+     float y = -sin(a) * (archRadius + 2);
+     vertex(x, y, 0);
+  }
+  
+  vertex(-boardW/2, 10, 0);
+  endShape(CLOSE);
+  
+  // Add simple thickness block at top for handle
+  noStroke();
+  translate(0, -boardH + 10, 0);
+  box(boardW, 20, boardThickness * 3);
+  
+  popMatrix();
+}
+
+// ------------------------------------------------
+// THE LOAM SAND (ROUGH & SWEPT)
+// ------------------------------------------------
+
+void drawMouldingSand() {
+  noStroke();
+  
+  if (state == FILL_SAND) {
+    // Just a rough lump covering the skeleton
+    pushMatrix();
+    translate(0, -archRadius/2 + roughSandY, 0);
+    fill(sandRough);
+    box(archRadius*2.4, archRadius + 20, patternLength + 10);
+    popMatrix();
+    
+  } else if (state == SWEEP_SAND) {
+    // Swept sand behind strickle, rough sand in front
+    drawSweptSand(-160, strickleZ);
+    
+    pushMatrix();
+    float roughLen = 160 - strickleZ;
+    if (roughLen > 0) {
+      translate(0, -archRadius/2, strickleZ + roughLen/2);
+      fill(sandRough);
+      box(archRadius*2.4, archRadius + 20, roughLen);
+    }
+    popMatrix();
+    
+  } else if (state >= REMOVE_PATTERN) {
+    // Entirely swept sand perfectly shaped
+    drawSweptSand(-160, 160);
+  }
+}
+
+void drawSweptSand(float zStart, float zEnd) {
+  if (zEnd <= zStart) return;
+  
+  fill(sandMain);
+  beginShape(QUAD_STRIP);
+  for(int i = 0; i <= 30; i++) {
+     float a = PI + PI * (i/30.0);
+     float x = cos(a) * archRadius;
+     float y = sin(a) * archRadius;
+     vertex(x, y, zStart);
+     vertex(x, y, zEnd);
+  }
+  endShape();
+  
+  // Ends (Faces)
+  fill(sandDark);
+  beginShape();
+  for(int i = 0; i <= 30; i++) {
+     float a = PI + PI * (i/30.0);
+     vertex(cos(a) * archRadius, sin(a) * archRadius, zStart);
+  }
+  endShape(CLOSE);
+  
+  beginShape();
+  for(int i = 30; i >= 0; i--) {
+     float a = PI + PI * (i/30.0);
+     vertex(cos(a) * archRadius, sin(a) * archRadius, zEnd);
+  }
+  endShape(CLOSE);
+}
+
+// ------------------------------------------------
+// CAVITY INDENTATIONS
+// ------------------------------------------------
+// To fake boolean subtraction cleanly in pure Processing, 
+// we render the indentations as dark geometry embedded flush in the sand.
+
+void drawCavityIndentations() {
+  // We only draw these when the pattern lifts, revealing the sand underneath.
+  float alpha = map(patternLiftY, 0, 100, 0, 255);
+  if (alpha < 1) return;
+  
+  fill(cavityWall, alpha);
+  noStroke();
+  
+  // Dark rib cavities
+  for (int i = 0; i < ribCount; i++) {
+    pushMatrix();
+    translate(0, 0, ribZPositions[i]);
+    // Draw slightly smaller to sit inside the sand surface without Z-fighting
+    drawSingleArch(cavityWall, cavityWall, archRadius, archDepth, archThickness + 0.5);
+    popMatrix();
+  }
+  
+  // Dark stick cavities
+  float a = PI/4.0;
+  float sx = cos(a) * archRadius;
+  float sy = -sin(a) * archRadius;
+  
+  pushMatrix(); translate(0, -archRadius, 0); box(stickRadius*2.2, stickRadius*2.2, patternLength + 20); popMatrix();
+  pushMatrix(); translate(sx, sy, 0); box(stickRadius*2.2, stickRadius*2.2, patternLength + 20); popMatrix();
+  pushMatrix(); translate(-sx, sy, 0); box(stickRadius*2.2, stickRadius*2.2, patternLength + 20); popMatrix();
+}
+
+// ------------------------------------------------
+// GEOMETRY HELPERS
+// ------------------------------------------------
+
+void drawSingleArch(int fillColor, int strokeColor, float r, float depth, float thick) {
+  fill(fillColor);
+  stroke(strokeColor);
+  strokeWeight(1);
+  
+  // Front Face
+  beginShape(QUAD_STRIP);
+  for(int i=0; i<=20; i++) {
+    float a = PI + PI * (i/20.0);
+    float outX = cos(a) * r;
+    float outY = sin(a) * r;
+    float inX = cos(a) * (r - depth);
+    float inY = sin(a) * (r - depth);
+    vertex(outX, outY, thick/2);
+    vertex(inX, inY, thick/2);
+  }
+  endShape();
+  
+  // Back Face
+  beginShape(QUAD_STRIP);
+  for(int i=0; i<=20; i++) {
+    float a = PI + PI * (i/20.0);
+    float outX = cos(a) * r;
+    float outY = sin(a) * r;
+    float inX = cos(a) * (r - depth);
+    float inY = sin(a) * (r - depth);
+    vertex(inX, inY, -thick/2);
+    vertex(outX, outY, -thick/2);
+  }
+  endShape();
+  
+  // Outer Edge
+  beginShape(QUAD_STRIP);
+  for(int i=0; i<=20; i++) {
+    float a = PI + PI * (i/20.0);
+    float outX = cos(a) * r;
+    float outY = sin(a) * r;
+    vertex(outX, outY, thick/2);
+    vertex(outX, outY, -thick/2);
+  }
+  endShape();
+}
+
+
+// ================================================================
+// 2D USER INTERFACE
+// ================================================================
+
+void drawUI() {
+  String title = "";
+  String subtitle = "";
+
+  if (state == SKELETON_ARCHES) {
+    title = "STEP 1: SKELETON ARCHES";
+    subtitle = "Wooden base plate and parabolic arch ribs are placed on the floor.";
+  } else if (state == SKELETON_STICKS) {
+    title = "STEP 2: LONGITUDINAL STICKS";
+    subtitle = "Wooden sticks are attached to reinforce the pattern structure.";
+  } else if (state == PLACE_STRICKLE) {
+    title = "STEP 3: PLACE STRICKLE BOARD";
+    subtitle = "A leveling board matching the outer parabolic profile is positioned.";
+  } else if (state == FILL_SAND) {
+    title = "STEP 4: FILL LOAM SAND";
+    subtitle = "Loam moulding sand is heavily packed around and over the skeleton.";
+  } else if (state == SWEEP_SAND) {
+    title = "STEP 5: SWEEPING THE SAND";
+    subtitle = "The strickle board sweeps the length, cutting the sand to a perfect parabola.";
+  } else if (state == REMOVE_PATTERN) {
+    title = "STEP 6: REMOVE SKELETON PATTERN";
+    subtitle = "The wooden strickle, sticks, and ribs are extracted vertically.";
+  } else if (state == FINAL_CAVITY) {
+    title = "STEP 7: FINISHED MOULD CAVITY";
+    subtitle = "The inner core retains the hollow ribs and stick impressions for casting.";
+  }
+
+  // Header Background
+  fill(250, 250, 250, 220);
+  noStroke();
+  rect(0, 0, width, 85);
+
+  // Text
+  fill(30);
+  textAlign(CENTER, TOP);
+  textSize(28);
+  text(title, width / 2, 15);
+  
+  fill(80);
+  textSize(18);
+  text(subtitle, width / 2, 52);
+
+  // Button Logic
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+  boolean over = mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH;
+  boolean disabled = (state == SWEEP_SAND && sweepingActive) || (state == REMOVE_PATTERN && removingActive);
+
+  if (disabled) fill(200);
+  else fill(over ? 220 : 255);
+  
+  stroke(120);
+  strokeWeight(2);
+  rect(bx, by, btnW, btnH, 8);
+
+  fill(30);
+  textAlign(CENTER, CENTER);
+  textSize(22);
+
+  String btnText = "NEXT STEP";
+  if (state == FINAL_CAVITY) btnText = "RESTART";
+  else if (state == SWEEP_SAND && disabled) btnText = "SWEEPING...";
+  else if (state == REMOVE_PATTERN && disabled) btnText = "REMOVING...";
+
+  text(btnText, bx + btnW / 2, by + btnH / 2 - 3);
+
+  // Footer text
+  fill(90);
+  textAlign(LEFT, BOTTOM);
+  textSize(16);
+  text("Drag screen = Rotate 3D view", 20, height - 15);
+}
+
+// ================================================================
+// INPUT HANDLING
+// ================================================================
+
+void mouseDragged() {
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+
+  // Prevent rotation when touching the UI button
+  if (!(mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH)) {
+    rotY += (mouseX - pmouseX) * 0.01;
+    rotX -= (mouseY - pmouseY) * 0.01;
+    rotX = constrain(rotX, -PI/2.2, PI/2.2);
+  }
+}
+
+void mouseReleased() {
+  float bx = width / 2 - btnW / 2;
+  float by = height - 90;
+
+  if (mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH) {
+    
+    // Block if animating
+    if ((state == SWEEP_SAND && sweepingActive) || (state == REMOVE_PATTERN && removingActive)) return;
+
+    if (state == FINAL_CAVITY) {
+      resetSimulation();
+      return;
+    }
+    
+    state++;
+
+    // Trigger state-specific logic
+    if (state == FILL_SAND) {
+      roughSandY = 200; // Drops in from above
+    } else if (state == SWEEP_SAND) {
+      sweepingActive = true;
+      sweepStartTime = millis();
+    } else if (state == REMOVE_PATTERN) {
+      removingActive = true;
+      removeStartTime = millis();
+    }
+  }
+}
+
+void resetSimulation() {
+  state = SKELETON_ARCHES;
+  patternLiftY = 0;
+  strickleZ = -170;
+  sweepingActive = false;
+  removingActive = false;
+  rotX = -PI / 5.0;
+  rotY = PI / 4.0;
+}
