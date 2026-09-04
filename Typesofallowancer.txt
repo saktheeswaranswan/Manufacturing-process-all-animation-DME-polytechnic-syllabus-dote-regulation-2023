@@ -1,0 +1,370 @@
+// ================================================================
+// PATTERN ALLOWANCES - 3D INTERACTIVE SIMULATION
+// COMPLETE APDE / PROCESSING ANDROID P3D SOURCE CODE
+//
+// Screens:
+// 1. Introduction
+// 2. Machining Allowance (3D rough to smooth transition)
+// 3. Shrinkage Allowance (3D volumetric contraction + Table)
+// 4. Draft Allowance (3D straight vs tapered extraction + Table)
+//
+// INSTRUCTIONS:
+// Drag screen = Rotate 3D models
+// Next Button = Advance the story
+// ================================================================
+
+int state = 0;
+final int INTRO = 0;
+final int MACHINING = 1;
+final int SHRINKAGE = 2;
+final int DRAFT = 3;
+
+// UI & Interaction
+float btnW = 220;
+float btnH = 60;
+float rotX = -PI/6.0;
+float rotY = PI/4.0;
+float targetRotX = -PI/6.0;
+float targetRotY = PI/4.0;
+
+// Animation Timer
+float animTime = 0.0;
+
+// Colors
+int colorRough = color(100, 120, 110);
+int colorFinished = color(200, 200, 210);
+int colorLiquid = color(255, 80, 50);
+int colorSolid = color(180, 50, 30);
+int colorPattern = color(240, 180, 40);
+int colorMould = color(80, 80, 85);
+
+void setup() {
+  size(displayWidth, displayHeight, P3D);
+  orientation(LANDSCAPE);
+  smooth(4);
+}
+
+void draw() {
+  background(240, 245, 250);
+  
+  animTime += 0.02;
+  if(animTime > 1.0) animTime = 0; // Loop animations
+
+  // Smooth Camera Rotation
+  rotX = lerp(rotX, targetRotX, 0.1);
+  rotY = lerp(rotY, targetRotY, 0.1);
+
+  // ==========================================
+  // 1. 3D RENDERING (Left side of the screen)
+  // ==========================================
+  hint(ENABLE_DEPTH_TEST);
+  lights();
+  ambientLight(150, 150, 150);
+  directionalLight(255, 255, 255, -1, 1, -1);
+  
+  pushMatrix();
+  translate(width * 0.25, height * 0.5, -200);
+  rotateX(rotX);
+  rotateY(rotY);
+
+  if (state == INTRO) {
+    drawIntro3D();
+  } else if (state == MACHINING) {
+    drawMachining3D();
+  } else if (state == SHRINKAGE) {
+    drawShrinkage3D();
+  } else if (state == DRAFT) {
+    drawDraft3D();
+  }
+  popMatrix();
+
+  // ==========================================
+  // 2. 2D UI & TEXT (Right side of the screen)
+  // ==========================================
+  camera();
+  hint(DISABLE_DEPTH_TEST);
+  noLights();
+  
+  drawUIContent();
+  drawNextButton();
+}
+
+// ================================================================
+// 3D SIMULATION METHODS
+// ================================================================
+
+void drawIntro3D() {
+  fill(colorPattern);
+  stroke(100);
+  strokeWeight(2);
+  rotateY(millis() * 0.001);
+  box(150);
+}
+
+void drawMachining3D() {
+  noStroke();
+  
+  // Oscillate between showing the rough casting and the machined finish
+  float cycle = (sin(millis() * 0.003) + 1.0) / 2.0; 
+  
+  // Inner Finished Casting (15mm scaled up)
+  fill(colorFinished);
+  box(150);
+  
+  // Outer Rough Allowance (20mm scaled up)
+  if (cycle > 0.1) {
+    fill(colorRough, 255 * cycle); 
+    box(200);
+  }
+  
+  // 3D Labels
+  fill(0);
+  textSize(24);
+  textAlign(CENTER);
+  text("15mm Finished", 0, -85);
+  text("20mm Rough", 0, 115);
+}
+
+void drawShrinkage3D() {
+  noStroke();
+  
+  // Volumetric Shrinkage Animation
+  float shrinkFactor = map(sin(millis() * 0.002), -1, 1, 0.85, 1.0);
+  
+  // Mould Cavity (Wireframe/Transparent)
+  fill(colorMould, 100);
+  stroke(50);
+  strokeWeight(1);
+  box(160);
+  
+  // Metal (Liquid to Solid)
+  noStroke();
+  if (shrinkFactor > 0.95) fill(colorLiquid);
+  else fill(colorSolid);
+  
+  pushMatrix();
+  translate(0, (160 - (160 * shrinkFactor)) / 2.0, 0); // Settle at bottom
+  box(160 * shrinkFactor, 160 * shrinkFactor, 160 * shrinkFactor);
+  popMatrix();
+}
+
+void drawDraft3D() {
+  float lift = map(sin(millis() * 0.002), -1, 1, 0, 150);
+  
+  // Left: Without Draft (Straight vertical)
+  pushMatrix();
+  translate(-120, 0, 0);
+  fill(colorMould);
+  box(100, 20, 100); // Sand base
+  translate(0, -lift, 0);
+  fill(200, 50, 50); // Red indicates bad/friction
+  box(80, 100, 80);
+  popMatrix();
+  
+  // Right: With Draft (Tapered)
+  pushMatrix();
+  translate(120, 0, 0);
+  fill(colorMould);
+  box(100, 20, 100); // Sand base
+  translate(0, -lift, 0);
+  fill(colorPattern);
+  drawTaperedBox(80, 100, 80, 10); // 10 units of taper
+  popMatrix();
+}
+
+void drawTaperedBox(float w, float h, float d, float taper) {
+  beginShape(QUADS);
+  // Front
+  vertex(-w/2 + taper, -h/2, d/2 - taper); vertex(w/2 - taper, -h/2, d/2 - taper);
+  vertex(w/2, h/2, d/2); vertex(-w/2, h/2, d/2);
+  // Back
+  vertex(-w/2 + taper, -h/2, -d/2 + taper); vertex(w/2 - taper, -h/2, -d/2 + taper);
+  vertex(w/2, h/2, -d/2); vertex(-w/2, h/2, -d/2);
+  // Left
+  vertex(-w/2 + taper, -h/2, -d/2 + taper); vertex(-w/2 + taper, -h/2, d/2 - taper);
+  vertex(-w/2, h/2, d/2); vertex(-w/2, h/2, -d/2);
+  // Right
+  vertex(w/2 - taper, -h/2, -d/2 + taper); vertex(w/2 - taper, -h/2, d/2 - taper);
+  vertex(w/2, h/2, d/2); vertex(w/2, h/2, -d/2);
+  // Top
+  vertex(-w/2 + taper, -h/2, -d/2 + taper); vertex(w/2 - taper, -h/2, -d/2 + taper);
+  vertex(w/2 - taper, -h/2, d/2 - taper); vertex(-w/2 + taper, -h/2, d/2 - taper);
+  endShape();
+}
+
+// ================================================================
+// 2D UI & DATA RENDERING
+// ================================================================
+
+void drawUIContent() {
+  float startX = width * 0.55;
+  float startY = 60;
+  
+  fill(20);
+  textAlign(LEFT, TOP);
+  
+  if (state == INTRO) {
+    textSize(40);
+    text("PATTERN ALLOWANCES", startX, startY);
+    textSize(22);
+    fill(80);
+    text("In metal casting, patterns are never made to the exact\n" +
+         "dimensions of the final part. They are modified using\n" +
+         "allowances to compensate for physical changes during\n" +
+         "cooling and manufacturing.\n\n" +
+         "Tap NEXT to explore the 3 main types.", startX, startY + 60);
+         
+  } else if (state == MACHINING) {
+    textSize(35);
+    fill(180, 50, 50);
+    text("1. MACHINING (FINISHING) ALLOWANCE", startX, startY);
+    
+    textSize(18);
+    fill(40);
+    text("Necessity:\n" +
+         "• Removes surface roughness, dirt, and slag.\n" +
+         "• Achieves exact dimensions & desired surface finish.\n" +
+         "• Removes oxidized scales formed during heat treatment.\n\n" +
+         "Determining Factors:\n" +
+         "• Nature of Metal (Ferrous requires more than Non-Ferrous)\n" +
+         "• Size, Shape, and Casting Conditions\n" +
+         "• Type of machining (Grinding, Turning, Milling)\n" +
+         "• Directly proportional to the number of cuts required.", startX, startY + 50);
+         
+    fill(0, 100, 0);
+    text("Example Calculation:\n" +
+         "Rough Surface Casting: 20 mm\n" +
+         "Desired Finish: 15 mm\n" +
+         "Required Machining Allowance: 20mm - 15mm = 5 mm", startX, startY + 280);
+         
+  } else if (state == SHRINKAGE) {
+    textSize(35);
+    fill(180, 50, 50);
+    text("2. SHRINKAGE (CONTRACTION) ALLOWANCE", startX, startY);
+    
+    textSize(18);
+    fill(40);
+    text("Compensates for volumetric contraction as liquid metal\n" +
+         "cools (Liquid Shrinkage) and solidifies (Solid Shrinkage).\n" +
+         "Patterns are made slightly larger to account for this.", startX, startY + 50);
+         
+    // Draw Shrinkage Table
+    String[] headers = {"Cast Metal / Alloy", "Shrinkage Allowance"};
+    String[][] data = {
+      {"Grey Cast Iron", "6.95 to 10.4 mm/m"},
+      {"White Cast Iron", "20.8 mm/m"},
+      {"Steel", "20.8 mm/m"},
+      {"Aluminium", "17.0 mm/m"},
+      {"Aluminium Alloy", "12.5 to 15.0 mm/m"},
+      {"Brass", "15.3 mm/m"}
+    };
+    drawTable(startX, startY + 140, headers, data);
+    
+  } else if (state == DRAFT) {
+    textSize(35);
+    fill(180, 50, 50);
+    text("3. DRAFT (TAPER) ALLOWANCE", startX, startY);
+    
+    textSize(18);
+    fill(40);
+    text("Taper applied to vertical faces (perpendicular to parting line)\n" +
+         "so the pattern can be removed without damaging the sand mould.\n" +
+         "Internal surfaces require more draft than external surfaces.", startX, startY + 50);
+         
+    // Draw Draft Table
+    String[] headers = {"Pattern Material", "External Draft", "Internal Draft"};
+    String[][] data = {
+      {"Plastic", "0.25° to 1°", "0.35° to 2.25°"},
+      {"Wood", "0.25° to 3°", "0.5° to 3°"},
+      {"Metal", "0.35° to 1.5°", "0.5° to 3°"}
+    };
+    drawTable(startX, startY + 140, headers, data);
+  }
+}
+
+// Table Drawing Helper
+void drawTable(float x, float y, String[] headers, String[][] data) {
+  float cellH = 35;
+  float cellW1 = 200;
+  float cellW2 = 220;
+  
+  stroke(150);
+  strokeWeight(2);
+  
+  // Headers
+  fill(200, 210, 230);
+  rect(x, y, cellW1, cellH);
+  rect(x + cellW1, y, cellW2, cellH);
+  if (headers.length > 2) rect(x + cellW1 + cellW2, y, cellW2, cellH);
+  
+  fill(0);
+  textSize(16);
+  textAlign(CENTER, CENTER);
+  text(headers[0], x + cellW1/2, y + cellH/2);
+  text(headers[1], x + cellW1 + cellW2/2, y + cellH/2);
+  if (headers.length > 2) text(headers[2], x + cellW1 + cellW2 + cellW2/2, y + cellH/2);
+  
+  // Data Rows
+  for (int i = 0; i < data.length; i++) {
+    float rowY = y + cellH + (i * cellH);
+    fill(255);
+    rect(x, rowY, cellW1, cellH);
+    rect(x + cellW1, rowY, cellW2, cellH);
+    if (data[i].length > 2) rect(x + cellW1 + cellW2, rowY, cellW2, cellH);
+    
+    fill(50);
+    text(data[i][0], x + cellW1/2, rowY + cellH/2);
+    text(data[i][1], x + cellW1 + cellW2/2, rowY + cellH/2);
+    if (data[i].length > 2) text(data[i][2], x + cellW1 + cellW2 + cellW2/2, rowY + cellH/2);
+  }
+}
+
+void drawNextButton() {
+  float bx = width - btnW - 30;
+  float by = height - btnH - 30;
+  
+  boolean over = mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH;
+  
+  fill(over ? 180 : 220);
+  stroke(100);
+  strokeWeight(2);
+  rect(bx, by, btnW, btnH, 10);
+  
+  fill(20);
+  textSize(24);
+  textAlign(CENTER, CENTER);
+  
+  String btnText = (state == DRAFT) ? "RESTART" : "NEXT STORY >";
+  text(btnText, bx + btnW/2, by + btnH/2 - 3);
+}
+
+// ================================================================
+// INPUT HANDLING
+// ================================================================
+
+void mouseDragged() {
+  float bx = width - btnW - 30;
+  float by = height - btnH - 30;
+  
+  // If not dragging on the button, rotate the 3D model
+  if (!(mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH)) {
+    targetRotY += (mouseX - pmouseX) * 0.01;
+    targetRotX -= (mouseY - pmouseY) * 0.01;
+  }
+}
+
+void mouseReleased() {
+  float bx = width - btnW - 30;
+  float by = height - btnH - 30;
+  
+  // Click Next Button
+  if (mouseX > bx && mouseX < bx + btnW && mouseY > by && mouseY < by + btnH) {
+    state++;
+    if (state > DRAFT) {
+      state = INTRO;
+    }
+    // Reset camera nicely for the new scene
+    targetRotX = -PI/6.0;
+    targetRotY = PI/4.0;
+  }
+}
